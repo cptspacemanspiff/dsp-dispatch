@@ -46,6 +46,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+## CI
+
+`.github/workflows/benchmarks.yml` runs on push/PR (and manual dispatch):
+
+- **backend-tests** — builds the production library with each backend
+  (`portable`, `mkl`, `aocl`) and runs the full test suite against it.
+- **benchmarks** — builds every `fft_bench_*`, runs `tools/run_benchmarks.py`,
+  posts the results table to the run summary, and uploads `bench_results/`
+  (tables, CSV, graph, JSON) as an artifact.
+
+CI benchmark numbers are a **smoke signal** only: shared GitHub runners are
+noisy and of unknown CPU vendor, so they confirm the backends compile and run,
+not their relative performance. Run on dedicated hardware for real numbers.
+
 ### Options
 
 | Option | Default | Meaning |

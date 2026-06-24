@@ -1,0 +1,114 @@
+name: build-test-benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      min_time:
+        description: "Google Benchmark --benchmark_min_time per case"
+        default: "0.2s"
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Correctness: build the production library with each implemented backend and
+  # run the full normalized test suite against it.
+  backend-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [portable, mkl, aocl]
+    name: tests (${{ matrix.backend }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            build/_mkl
+          key: deps-${{ runner.os }}-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
+          restore-keys: deps-${{ runner.os }}-${{ matrix.backend }}-
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                   -DFFT_BACKEND=${{ matrix.backend }} -DFFT_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Benchmarks: build a per-backend executable for every backend, run them, and
+  # collate JSON -> tables + CSV + graph. Shared-runner numbers are a smoke
+  # signal (the code compiles and runs), NOT regression-grade measurements.
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install plotting deps
+        run: python -m pip install --upgrade matplotlib
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            build/_mkl
+          key: deps-${{ runner.os }}-bench-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
+          restore-keys: deps-${{ runner.os }}-bench-
+
+      - name: Configure (all backends)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                   -DFFT_ENABLE_BENCHMARKS=ON
+                   -DFFT_ENABLE_KFR_BENCHMARK=ON
+                   -DFFT_ENABLE_MKL_BENCHMARK=ON
+                   -DFFT_ENABLE_AOCL_BENCHMARK=ON
+
+      - name: Build benchmark executables
+        run: cmake --build build --target
+                   fft_bench_portable fft_bench_kfr fft_bench_mkl fft_bench_aocl
+
+      - name: Run + collate benchmarks
+        run: python tools/run_benchmarks.py --build-dir build
+                   --min-time "${{ github.event.inputs.min_time || '0.15s' }}"
+
+      - name: Publish results to job summary
+        if: always()
+        run: |
+          {
+            echo "## Benchmark results (smoke — shared runner, not regression-grade)"
+            echo ""
+            cat bench_results/results.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench_results/results.md
+            bench_results/results.csv
+            bench_results/latency.png
+            bench_results/*.json
