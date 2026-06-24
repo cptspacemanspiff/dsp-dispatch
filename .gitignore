@@ -1,0 +1,17 @@
+# Build output
+/build/
+build*/
+cmake-build-*/
+_deps/
+
+# Benchmark output
+/bench_results/
+
+# Python (tools/)
+__pycache__/
+*.pyc
+
+# Editor / OS
+.cache/
+compile_commands.json
+.DS_Store

@@ -1,0 +1,94 @@
+# Third-party component manifest (Phase 4).
+#
+# Records license, version, source, and redistribution notes for every external
+# dependency. CI should verify that no production artifact links a component
+# whose `production: false`. Vendor redistributable files must be copied from
+# explicit allowlists, not whole SDK trees.
+
+components:
+  - name: Google Benchmark
+    version: v1.9.4
+    license: Apache-2.0
+    source: https://github.com/google/benchmark
+    used_by: bench
+    production: false
+    notes: >
+      Benchmark harness only. Pulled via CMake FetchContent when not found on
+      the system. Never linked into the library or any shipped artifact.
+
+  - name: KFR
+    version: TBD
+    license: GPL-2.0-or-later / commercial (dual)
+    source: https://github.com/kfrlib/kfr
+    used_by: bench (gated by FFT_ENABLE_KFR_BENCHMARK)
+    production: false
+    notes: >
+      BENCHMARK-ONLY internal comparison. Must never be linked into or packaged
+      with a production artifact unless a commercial license is acquired. May be
+      benchmarked in an optimized Release build; the build forbids
+      FFT_ENABLE_KFR_BENCHMARK only when FFT_PACKAGING is ON, and requires
+      FFT_ENABLE_BENCHMARKS. Source lives only under bench/, which has no install
+      rule and is never packaged.
+
+  # ---- Production backend candidates (not yet integrated) ----
+  - name: Apple Accelerate / vDSP
+    version: platform
+    license: Apple SDK terms
+    source: Apple platform SDK
+    used_by: backend (vdsp)
+    production: true
+    notes: Linked from the OS SDK on Apple platforms. No redistribution of binaries.
+
+  - name: CMSIS-DSP
+    version: TBD
+    license: Apache-2.0
+    source: https://github.com/ARM-software/CMSIS-DSP
+    used_by: backend (cmsis)
+    production: true
+    notes: Permissively licensed. Enable NEON on AArch64. Copy only required units.
+
+  - name: Intel oneMKL (DFT)
+    version: 2026.0.0
+    license: Intel Simplified Software License (redistributable terms vary by version)
+    source: >
+      PyPI wheels mkl-static + mkl-include (manylinux_2_28 x86_64), fetched by
+      cmake/FetchMKL.cmake. Upstream: https://www.intel.com/.../onemkl.html
+    used_by: backend (mkl)
+    production: true
+    notes: >
+      Static, sequential link (mkl_intel_lp64 + mkl_sequential + mkl_core). DFTI
+      descriptors committed at plan creation. Have counsel review the
+      redistribution terms for the exact version shipped, and record the precise
+      redistributable file allowlist here before packaging an MKL build.
+
+  - name: AOCL-FFTZ
+    version: "5.3"
+    license: Verify exact terms (AMD AOCL component license; permissive but confirm)
+    source: >
+      Built from source via cmake/FetchAOCL.cmake (FetchContent of
+      https://github.com/amd/aocl-fftz, tag 5.3), static + single-threaded.
+    used_by: backend (aocl)
+    production: true
+    notes: >
+      AMD "Zen" FFT library, the AMD counterpart to oneMKL's DFT. Compiled into a
+      static library; not a prebuilt redistributable. Complex transforms of any
+      length; real transforms exclude prime sizes > 7 and their multiples (the
+      backend reports UnsupportedLength for those). Confirm the exact license
+      terms with counsel before shipping an AOCL build.
+
+  # ---- Portable fallback candidates (choose after benchmarking, Phase 6/7) ----
+  - name: PFFFT (candidate)
+    version: TBD
+    license: BSD-like
+    source: https://bitbucket.org/jpommier/pffft
+    used_by: backend (portable, candidate)
+    production: true
+    notes: Constrained power-of-two 1D. Candidate only; current portable backend is in-tree.
+
+  - name: PocketFFT (candidate)
+    version: TBD
+    license: BSD-3-Clause
+    source: https://github.com/mreineck/pocketfft
+    used_by: backend (portable, candidate)
+    production: true
+    notes: Broader length support. Candidate only; current portable backend is in-tree.
