@@ -70,6 +70,7 @@ not their relative performance. Run on dedicated hardware for real numbers.
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl` (Intel oneMKL fetched via `cmake/FetchMKL.cmake`). Requires benchmarks. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl` (AMD AOCL-FFTZ fetched + compiled via `cmake/FetchAOCL.cmake`). Requires benchmarks. |
+| `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the benchmark harness plus every backend compatible with the host (x86: `kfr`+`mkl`+`aocl`; Arm/Apple: `kfr`). Equivalent to setting the individual flags for compatible backends. This is what `make benchmarks` uses. |
 | `FFT_PACKAGING` | `OFF` | Set in release/packaging CI to assert no forbidden (benchmark-only) libraries are present. |
 
 ## Benchmarks

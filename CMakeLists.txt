@@ -15,10 +15,57 @@ option(FFT_ENABLE_BENCHMARKS "Build the benchmark harness" OFF)
 option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
+option(FFT_ENABLE_ALL_BENCHMARKS "Build every benchmark backend compatible with this host" OFF)
 option(FFT_BUILD_TESTS "Build correctness tests" ON)
 # Set ON in packaging/release CI to assert no forbidden libraries are present.
 # Benchmarking KFR in an optimized (Release) build is allowed; packaging it is not.
 option(FFT_PACKAGING "Building a shippable/redistributable artifact" OFF)
+
+# ---------------------------------------------------------------------------
+# Host detection and backend compatibility
+# ---------------------------------------------------------------------------
+# Classify the target CPU once; reused by both the library backend selection
+# and the "all compatible benchmarks" expansion below.
+set(_host_x86 FALSE)
+set(_host_arm FALSE)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86|x86")
+    set(_host_x86 TRUE)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
+    set(_host_arm TRUE)
+endif()
+
+# Which optional benchmark backends can this host build? (portable is always
+# available and needs no external dependency.) Best-effort guide:
+#   - KFR:        cross-platform (x86 SSE2+ / ARM NEON).
+#   - oneMKL:     Intel x86 library, x86 only.
+#   - AOCL-FFTZ:  AMD x86 library, x86 only.
+set(_compat_kfr FALSE)
+set(_compat_mkl FALSE)
+set(_compat_aocl FALSE)
+if(_host_x86)
+    set(_compat_kfr TRUE)
+    set(_compat_mkl TRUE)
+    set(_compat_aocl TRUE)
+elseif(_host_arm)
+    set(_compat_kfr TRUE)
+endif()
+
+# FFT_ENABLE_ALL_BENCHMARKS: convenience switch equivalent to setting the
+# individual FFT_ENABLE_*_BENCHMARK flags for every backend compatible with this
+# host (and the harness itself). Non-cache sets, so it never claims an
+# incompatible backend and never rewrites the user's cached values.
+if(FFT_ENABLE_ALL_BENCHMARKS)
+    set(FFT_ENABLE_BENCHMARKS ON)
+    if(_compat_kfr)
+        set(FFT_ENABLE_KFR_BENCHMARK ON)
+    endif()
+    if(_compat_mkl)
+        set(FFT_ENABLE_MKL_BENCHMARK ON)
+    endif()
+    if(_compat_aocl)
+        set(FFT_ENABLE_AOCL_BENCHMARK ON)
+    endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Backend resolution
@@ -27,9 +74,9 @@ set(_resolved_backend "${FFT_BACKEND}")
 if(_resolved_backend STREQUAL "auto")
     if(APPLE)
         set(_resolved_backend "vdsp")
-    elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64") AND NOT WIN32)
+    elseif(_host_arm AND NOT WIN32)
         set(_resolved_backend "cmsis")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86|x86")
+    elseif(_host_x86)
         # AOCL-FFTZ is a complete x86 backend (fetched and built from source via
         # cmake/FetchAOCL.cmake), so it is the default on x86.
         set(_resolved_backend "aocl")
@@ -39,7 +86,23 @@ if(_resolved_backend STREQUAL "auto")
         set(_resolved_backend "portable")
     endif()
 endif()
+
+# Configure-time build audit: selected library backend plus the optional
+# benchmark backends that are compatible with this host.
+set(_compat_list "portable")
+if(_compat_kfr)
+    list(APPEND _compat_list "kfr")
+endif()
+if(_compat_mkl)
+    list(APPEND _compat_list "mkl")
+endif()
+if(_compat_aocl)
+    list(APPEND _compat_list "aocl")
+endif()
+string(REPLACE ";" " " _compat_str "${_compat_list}")
 message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
+message(STATUS "dsp-dispatch host: ${CMAKE_SYSTEM_PROCESSOR} | "
+    "compatible benchmark backends: ${_compat_str}")
 
 set(_backend_sources "")
 if(_resolved_backend STREQUAL "portable")
