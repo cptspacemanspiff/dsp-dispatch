@@ -17,6 +17,15 @@ BUILD_TYPE ?= Release
 # Prefer Ninja when present; fall back to Unix Makefiles otherwise.
 GENERATOR  ?= $(shell command -v ninja >/dev/null 2>&1 && echo Ninja || echo "Unix Makefiles")
 
+# Disable ASLR for the benchmark run so results are reproducible (silences
+# Google Benchmark's "ASLR is enabled" warning). setarch -R sets the
+# ADDR_NO_RANDOMIZE personality, which child processes inherit, so wrapping the
+# runner covers every fft_bench_* it spawns. No-op if setarch is unavailable
+# (e.g. non-Linux); pass NO_ASLR_DISABLE=1 to opt out.
+ifndef NO_ASLR_DISABLE
+ASLR_WRAP ?= $(shell command -v setarch >/dev/null 2>&1 && echo "setarch -R")
+endif
+
 # Optional: raise KFR's ISA baseline for a fair comparison (avx2|avx512|...).
 # Only added to the configure line when set.
 ifdef KFR_ARCH
@@ -42,7 +51,7 @@ build: configure
 
 ## run: run every fft_bench_* and write bench_results/ (tables, CSV, graph)
 run: build
-	tools/run_benchmarks.py --build-dir $(BUILD_DIR)
+	$(ASLR_WRAP) tools/run_benchmarks.py --build-dir $(BUILD_DIR)
 
 ## clean: remove the build directory and benchmark output
 clean:
