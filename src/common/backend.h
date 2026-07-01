@@ -8,8 +8,8 @@
 //
 // Exactly one backend is compiled into a given build, selected at configure
 // time via FFT_BACKEND, and provides make_backend_plan().
-#ifndef FFT_DISPATCH_COMMON_BACKEND_H
-#define FFT_DISPATCH_COMMON_BACKEND_H
+#ifndef DSP_DISPATCH_COMMON_BACKEND_H
+#define DSP_DISPATCH_COMMON_BACKEND_H
 
 #include <cstddef>
 
@@ -32,4 +32,4 @@ Result<BackendPlan> make_backend_plan(const FftPlanConfig& config);
 
 }  // namespace fft
 
-#endif  // FFT_DISPATCH_COMMON_BACKEND_H
+#endif  // DSP_DISPATCH_COMMON_BACKEND_H

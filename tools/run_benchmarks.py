@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the fft-dispatch per-backend benchmarks, collate their JSON output, and
+"""Run the dsp-dispatch per-backend benchmarks, collate their JSON output, and
 emit human-readable tables plus a comparison graph.
 
 Each backend has its own executable (build/bench/fft_bench_<backend>). This
@@ -268,7 +268,7 @@ def main() -> int:
     print()
 
     # Markdown file.
-    header = "# fft-dispatch benchmark results\n\n"
+    header = "# dsp-dispatch benchmark results\n\n"
     if context:
         header += (f"- host: `{context.get('host_name','?')}`  "
                    f"cpus: {context.get('num_cpus','?')}  "

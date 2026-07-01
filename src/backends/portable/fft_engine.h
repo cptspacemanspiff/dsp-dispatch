@@ -12,8 +12,8 @@
 //
 // This file is templated on the scalar type so the backend can instantiate it
 // for both float32 and float64.
-#ifndef FFT_DISPATCH_PORTABLE_FFT_ENGINE_H
-#define FFT_DISPATCH_PORTABLE_FFT_ENGINE_H
+#ifndef DSP_DISPATCH_PORTABLE_FFT_ENGINE_H
+#define DSP_DISPATCH_PORTABLE_FFT_ENGINE_H
 
 #include <cmath>
 #include <complex>
@@ -152,4 +152,4 @@ private:
 
 }  // namespace fft::portable
 
-#endif  // FFT_DISPATCH_PORTABLE_FFT_ENGINE_H
+#endif  // DSP_DISPATCH_PORTABLE_FFT_ENGINE_H

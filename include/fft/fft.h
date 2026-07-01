@@ -1,9 +1,9 @@
-// fft-dispatch: a normalized, backend-independent CPU FFT abstraction.
+// dsp-dispatch: a normalized, backend-independent CPU FFT abstraction.
 //
 // This public header is intentionally free of any backend-specific layout,
 // scaling, or packing rules. See docs/requirements.md for the fixed contract.
-#ifndef FFT_DISPATCH_FFT_H
-#define FFT_DISPATCH_FFT_H
+#ifndef DSP_DISPATCH_FFT_H
+#define DSP_DISPATCH_FFT_H
 
 #include <cstddef>
 #include <memory>
@@ -119,4 +119,4 @@ inline std::size_t real_complex_bins(std::size_t length) { return length / 2 + 1
 
 }  // namespace fft
 
-#endif  // FFT_DISPATCH_FFT_H
+#endif  // DSP_DISPATCH_FFT_H

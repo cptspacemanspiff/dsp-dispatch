@@ -8,20 +8,20 @@
 # fft_add_bench_backend(<name> <backend_source>)
 # Extra args after the source are passed to target_link_libraries on the lib.
 function(fft_add_bench_backend name backend_src)
-    add_library(fft_dispatch_${name} STATIC
+    add_library(dsp_dispatch_${name} STATIC
         ${PROJECT_SOURCE_DIR}/src/common/fft.cpp
         ${backend_src})
-    target_include_directories(fft_dispatch_${name}
+    target_include_directories(dsp_dispatch_${name}
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PRIVATE ${PROJECT_SOURCE_DIR}/src)
-    target_compile_features(fft_dispatch_${name} PUBLIC cxx_std_17)
+    target_compile_features(dsp_dispatch_${name} PUBLIC cxx_std_17)
     if(ARGN)
-        target_link_libraries(fft_dispatch_${name} PUBLIC ${ARGN})
+        target_link_libraries(dsp_dispatch_${name} PUBLIC ${ARGN})
     endif()
 
     add_executable(fft_bench_${name} ${CMAKE_CURRENT_SOURCE_DIR}/bench_fft.cpp)
     target_link_libraries(fft_bench_${name}
-        PRIVATE fft_dispatch_${name} benchmark::benchmark)
+        PRIVATE dsp_dispatch_${name} benchmark::benchmark)
     target_include_directories(fft_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endfunction()
 

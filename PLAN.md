@@ -1,4 +1,4 @@
-# FFT Dispatch Plan
+# DSP Dispatch Plan
 
 ## Goal
 

@@ -1,4 +1,4 @@
-# fft-dispatch
+# dsp-dispatch
 
 A commercially distributable CPU FFT abstraction with one normalized contract
 across backends. Application code never sees backend-specific layouts, packing,
@@ -64,7 +64,7 @@ not their relative performance. Run on dedicated hardware for real numbers.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|portable`. `auto` resolves to `vdsp` on Apple, `cmsis` on Arm, else `portable`. `portable`, `mkl`, and `aocl` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`). |
+| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|portable`. `auto` resolves to `vdsp` on Apple, `cmsis` on Arm, `aocl` on x86, else `portable`. `portable`, `mkl`, and `aocl` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`). |
 | `FFT_BUILD_TESTS` | `ON` | Build the correctness tests. |
 | `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark (fetched if not installed). Always builds `fft_bench_portable`. |
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |

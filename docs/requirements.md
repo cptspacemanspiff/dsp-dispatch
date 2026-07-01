@@ -1,4 +1,4 @@
-# FFT Dispatch Requirements (Phase 1)
+# DSP Dispatch Requirements (Phase 1)
 
 This document fixes the workload and the public contract so backend selection
 and acceptance testing have a stable target. Values marked **(initial)** are

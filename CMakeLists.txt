@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fft_dispatch LANGUAGES CXX)
+project(dsp_dispatch LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -29,14 +29,17 @@ if(_resolved_backend STREQUAL "auto")
         set(_resolved_backend "vdsp")
     elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64") AND NOT WIN32)
         set(_resolved_backend "cmsis")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86|x86")
+        # AOCL-FFTZ is a complete x86 backend (fetched and built from source via
+        # cmake/FetchAOCL.cmake), so it is the default on x86.
+        set(_resolved_backend "aocl")
     else()
-        # Only the portable backend is implemented today; vendor backends are
-        # scaffolded and emit a clear error if selected. Auto stays portable so
-        # every platform has a correct, buildable default.
+        # Fallback for architectures without a vendor backend. The portable
+        # backend is always implemented, so every platform stays buildable.
         set(_resolved_backend "portable")
     endif()
 endif()
-message(STATUS "fft-dispatch backend: ${_resolved_backend}")
+message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
 
 set(_backend_sources "")
 if(_resolved_backend STREQUAL "portable")
@@ -56,32 +59,32 @@ endif()
 # ---------------------------------------------------------------------------
 # Library
 # ---------------------------------------------------------------------------
-add_library(fft_dispatch
+add_library(dsp_dispatch
     src/common/fft.cpp
     ${_backend_sources})
-target_include_directories(fft_dispatch
+target_include_directories(dsp_dispatch
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(fft_dispatch PUBLIC cxx_std_17)
-target_compile_definitions(fft_dispatch PRIVATE
+target_compile_features(dsp_dispatch PUBLIC cxx_std_17)
+target_compile_definitions(dsp_dispatch PRIVATE
     FFT_BACKEND_NAME="${_resolved_backend}")
 
 # The MKL backend needs the fetched oneMKL headers and static libraries.
 if(_resolved_backend STREQUAL "mkl")
     include(FetchMKL)
-    target_link_libraries(fft_dispatch PRIVATE MKL::MKL)
+    target_link_libraries(dsp_dispatch PRIVATE MKL::MKL)
 endif()
 
 # The AOCL backend needs AOCL-FFTZ built from source and its headers.
 if(_resolved_backend STREQUAL "aocl")
     include(FetchAOCL)
-    target_link_libraries(fft_dispatch PRIVATE AOCL::FFTZ)
+    target_link_libraries(dsp_dispatch PRIVATE AOCL::FFTZ)
 endif()
 
 # Only the library and public headers are installable/redistributable. The
 # benchmark target (the sole carrier of KFR) has no install rule, so it can
 # never be packaged.
-install(TARGETS fft_dispatch ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
+install(TARGETS dsp_dispatch ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 
 # ---------------------------------------------------------------------------
