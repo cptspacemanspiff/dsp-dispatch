@@ -29,12 +29,60 @@ endfunction()
 fft_add_bench_backend(portable
     ${PROJECT_SOURCE_DIR}/src/backends/portable/portable_backend.cpp)
 
+# fir_add_bench_backend(<name> <backend_source>)
+# Extra args after the source are passed to target_link_libraries on the lib.
+function(fir_add_bench_backend name backend_src)
+    add_library(dsp_dispatch_fir_${name} STATIC
+        ${PROJECT_SOURCE_DIR}/src/common/fir.cpp
+        ${backend_src})
+    target_include_directories(dsp_dispatch_fir_${name}
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_compile_features(dsp_dispatch_fir_${name} PUBLIC cxx_std_17)
+    if(ARGN)
+        target_link_libraries(dsp_dispatch_fir_${name} PUBLIC ${ARGN})
+    endif()
+
+    add_executable(fir_bench_${name} ${CMAKE_CURRENT_SOURCE_DIR}/bench_fir.cpp)
+    target_link_libraries(fir_bench_${name}
+        PRIVATE dsp_dispatch_fir_${name} benchmark::benchmark)
+    target_include_directories(fir_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+endfunction()
+
+# FIR portable: always available, no external dependencies.
+fir_add_bench_backend(portable
+    ${PROJECT_SOURCE_DIR}/src/backends/portable/fir_backend.cpp)
+
+if(FIR_ENABLE_LIQUID_BENCHMARK)
+    include(FetchLiquidDSP)
+    fir_add_bench_backend(liquid
+        ${PROJECT_SOURCE_DIR}/src/backends/liquid/liquid_fir_backend.cpp
+        LiquidDSP::LiquidDSP)
+    message(STATUS "liquid-dsp FIR benchmark backend enabled (fetched).")
+endif()
+
+if(FIR_ENABLE_IPP_BENCHMARK)
+    include(FetchIPP)
+    fir_add_bench_backend(ipp
+        ${PROJECT_SOURCE_DIR}/src/backends/ipp/ipp_fir_backend.cpp
+        IPP::IPP)
+    message(STATUS "IPP FIR benchmark backend enabled (static ipp-static via uv if needed).")
+endif()
+
 # KFR: benchmark-only, fetched on demand. Lives entirely under bench/.
-if(FFT_ENABLE_KFR_BENCHMARK)
+if(FFT_ENABLE_KFR_BENCHMARK OR FIR_ENABLE_KFR_BENCHMARK)
     include(FetchContent)
+    if(FFT_ENABLE_KFR_BENCHMARK)
     set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
+    else()
+        set(KFR_ENABLE_DFT OFF CACHE BOOL "" FORCE)
+    endif()
     set(KFR_ENABLE_IO OFF CACHE BOOL "" FORCE)
-    set(KFR_ENABLE_DSP OFF CACHE BOOL "" FORCE)
+    if(FIR_ENABLE_KFR_BENCHMARK)
+        set(KFR_ENABLE_DSP ON CACHE BOOL "" FORCE)
+    else()
+        set(KFR_ENABLE_DSP OFF CACHE BOOL "" FORCE)
+    endif()
     set(KFR_ENABLE_AUDIO OFF CACHE BOOL "" FORCE)
     set(KFR_ENABLE_CAPI_BUILD OFF CACHE BOOL "" FORCE)
     set(KFR_ENABLE_MULTIARCH OFF CACHE BOOL "" FORCE)
@@ -44,11 +92,20 @@ if(FFT_ENABLE_KFR_BENCHMARK)
         GIT_TAG 6.3.1
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(kfr)
+endif()
 
+if(FFT_ENABLE_KFR_BENCHMARK)
     fft_add_bench_backend(kfr
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/kfr/kfr_backend.cpp
         kfr kfr_dft)
     message(STATUS "KFR benchmark backend enabled (benchmark-only, never shipped).")
+endif()
+
+if(FIR_ENABLE_KFR_BENCHMARK)
+    fir_add_bench_backend(kfr
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/kfr/fir_kfr_backend.cpp
+        kfr kfr_dsp)
+    message(STATUS "KFR FIR benchmark backend enabled (benchmark-only, never shipped).")
 endif()
 
 # Intel oneMKL: a production-capable backend, fetched on demand. Uses the same

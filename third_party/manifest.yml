@@ -20,7 +20,7 @@ components:
     version: TBD
     license: GPL-2.0-or-later / commercial (dual)
     source: https://github.com/kfrlib/kfr
-    used_by: bench (gated by FFT_ENABLE_KFR_BENCHMARK)
+    used_by: bench (gated by FFT_ENABLE_KFR_BENCHMARK and FIR_ENABLE_KFR_BENCHMARK)
     production: false
     notes: >
       BENCHMARK-ONLY internal comparison. Must never be linked into or packaged
@@ -75,6 +75,34 @@ components:
       length; real transforms exclude prime sizes > 7 and their multiples (the
       backend reports UnsupportedLength for those). Confirm the exact license
       terms with counsel before shipping an AOCL build.
+
+  - name: liquid-dsp
+    version: v1.7.0
+    license: MIT
+    source: https://github.com/jgaeddert/liquid-dsp
+    used_by: backend (fir/liquid), bench (gated by FIR_ENABLE_LIQUID_BENCHMARK)
+    production: true
+    notes: >
+      Generic FIR backend for f32 real and complex sample streams. Fetched via
+      cmake/FetchLiquidDSP.cmake when FIR_BACKEND=liquid or when the liquid FIR
+      benchmark is enabled. Copy only the library and license files required for
+      a packaged liquid build.
+
+  - name: Intel IPP (signal processing)
+    version: 2026.0.1
+    license: Intel Simplified Software License (redistributable terms vary by version)
+    source: >
+      PyPI wheels ipp-devel + ipp-static, installed with uv by
+      cmake/FetchIPP.cmake when FIR_BACKEND=ipp or
+      FIR_ENABLE_IPP_BENCHMARK=ON. Upstream: https://www.intel.com/.../ipp.html
+    used_by: backend (fir/ipp), bench (gated by FIR_ENABLE_IPP_BENCHMARK)
+    production: true
+    notes: >
+      Static IPP signal-processing link for the FIR backend (ipps plus ippvm and
+      ippcore dependencies). The backend uses the ippsFIRSR API with IPP's
+      automatic FIR algorithm selection. Have counsel review redistribution
+      terms for the exact wheel version shipped, and record the precise
+      redistributable file allowlist before packaging an IPP build.
 
   # ---- Portable fallback candidates (choose after benchmarking, Phase 6/7) ----
   - name: PFFFT (candidate)

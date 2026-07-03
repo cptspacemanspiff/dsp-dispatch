@@ -10,6 +10,8 @@ or scaling rules. See [`PLAN.md`](PLAN.md) for the full roadmap and
 Implemented and tested here:
 
 - **Normalized plan-based API** (`include/fft/fft.h`) — Phase 2.
+- **Normalized FIR plan API** (`include/fir/fir.h`) with stateful block
+  execution, batch support, and portable/liquid-dsp/IPP backend selection.
 - **Virtual-free dispatch.** `FftPlan` holds an opaque state pointer and a
   function pointer into monomorphized backend code; `execute` is a single
   indirect call hoistable out of a caller's loop. No virtual calls, and no
@@ -33,6 +35,12 @@ Implemented and tested here:
   `cmake/FetchAOCL.cmake`. Complex + real, f32/f64, batched. Complex transforms
   of any length; real transforms exclude 7-non-smooth lengths (the backend
   reports `UnsupportedLength`). Passes the full suite for supported shapes.
+- **FIR backends**: an in-tree portable direct FIR backend, optional
+  **liquid-dsp** (`-DFIR_BACKEND=liquid`), and optional **Intel IPP**
+  (`-DFIR_BACKEND=ipp`). liquid-dsp is fetched by `cmake/FetchLiquidDSP.cmake`;
+  IPP is resolved by `cmake/FetchIPP.cmake`, which can install Intel's
+  `ipp-devel` + `ipp-static` wheels with `uv`. Unsupported
+  precision/configurations are reported at plan creation.
 
 Scaffolded (compile-error stubs until implemented): the `vdsp` and `cmsis`
 backends. Cross-hardware benchmarking and legal review (Phases 6–7) require
@@ -65,12 +73,16 @@ not their relative performance. Run on dedicated hardware for real numbers.
 | Option | Default | Meaning |
 |---|---|---|
 | `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|portable`. `auto` resolves to `vdsp` on Apple, `cmsis` on Arm, `aocl` on x86, else `portable`. `portable`, `mkl`, and `aocl` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`). |
+| `FIR_BACKEND` | `portable` | `portable\|liquid\|ipp`. `portable` is the in-tree direct FIR backend. `liquid` fetches and links liquid-dsp. `ipp` uses Intel IPP from an installed package or from `ipp-devel` + `ipp-static` wheels installed with `uv`. |
 | `FFT_BUILD_TESTS` | `ON` | Build the correctness tests. |
 | `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark (fetched if not installed). Always builds `fft_bench_portable`. |
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl` (Intel oneMKL fetched via `cmake/FetchMKL.cmake`). Requires benchmarks. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl` (AMD AOCL-FFTZ fetched + compiled via `cmake/FetchAOCL.cmake`). Requires benchmarks. |
-| `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the benchmark harness plus every backend compatible with the host (x86: `kfr`+`mkl`+`aocl`; Arm/Apple: `kfr`). Equivalent to setting the individual flags for compatible backends. This is what `make benchmarks` uses. |
+| `FIR_ENABLE_LIQUID_BENCHMARK` | `OFF` | Also build `fir_bench_liquid` (liquid-dsp fetched via `cmake/FetchLiquidDSP.cmake`). Requires benchmarks. |
+| `FIR_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fir_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
+| `FIR_ENABLE_IPP_BENCHMARK` | `OFF` | Also build `fir_bench_ipp` (Intel IPP resolved by `cmake/FetchIPP.cmake`; can install `ipp-static` with `uv`). Requires benchmarks. |
+| `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the benchmark harness plus every backend compatible with this host (FFT: `kfr` plus x86-only `mkl`/`aocl`; FIR: `kfr` plus x86-only `ipp`). Equivalent to setting the individual flags for compatible backends. This is what `make benchmarks` uses. |
 | `FFT_PACKAGING` | `OFF` | Set in release/packaging CI to assert no forbidden (benchmark-only) libraries are present. |
 
 ## Benchmarks
@@ -103,13 +115,17 @@ JSON, and writes tables, a CSV, and a comparison graph:
 
 ```sh
 tools/run_benchmarks.py --build-dir build-bench
-# -> bench_results/{<backend>.json, results.md, results.csv, latency.png}
+# -> bench_results/{fft_<backend>.json, fft_results.md, fft_results.csv, fft_latency.png}
+tools/run_benchmarks.py --build-dir build-bench --suite fir
+# -> bench_results/{fir_<backend>.json, fir_results.md, fir_results.csv,
+#                   fir_latency.png}
 ```
 
 It prints execution-latency and throughput tables (with speedup vs a baseline,
-`--baseline portable` by default) and a `latency.png` with log-log latency and
-throughput vs N. Useful flags: `--filter execute`, `--min-time 0.2s`,
-`--repetitions 30`, `--backends portable kfr`, and `--no-run` to re-collate
+`--baseline portable` by default). FFT graphs include latency and throughput;
+FIR graphs use one latency subplot per tap count, with block size on the x-axis.
+Useful flags: `--filter execute`, `--min-time 0.2s`, `--repetitions 30`,
+`--backends portable kfr ipp`, `--suite fir`, and `--no-run` to re-collate
 existing JSON without re-running.
 
 ### Raw export
@@ -160,3 +176,28 @@ plan.value().execute(input, output);
 Normalization: forward is unscaled, inverse and complex-to-real are scaled by
 `1/N`. Real-to-complex output has `N/2 + 1` bins. A single `FftPlan` is not safe
 for concurrent `execute`; create one plan per thread.
+
+FIR usage:
+
+```cpp
+#include "fir/fir.h"
+
+float taps[] = {0.25f, 0.5f, 0.25f};
+float input[128] = {};
+float output[128] = {};
+
+fir::FirPlanConfig cfg;
+cfg.type = fir::FirType::Real;
+cfg.precision = fir::FirPrecision::F32;
+cfg.taps = taps;
+cfg.tap_count = 3;
+cfg.block_size = 128;
+
+auto plan = fir::FirPlan::create(cfg);
+if (!plan) { /* plan.status() */ }
+plan.value().execute(input, output);
+```
+
+FIR plans are single-threaded and stateful: each `execute` continues from the
+previous delay line, and a single `FirPlan` is not safe for concurrent
+`execute` calls. Call `clear()` to reset the delay line to zero.

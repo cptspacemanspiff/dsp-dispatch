@@ -11,10 +11,18 @@ set(FFT_BACKEND "auto" CACHE STRING
 set_property(CACHE FFT_BACKEND PROPERTY STRINGS
     auto vdsp cmsis mkl aocl portable)
 
+set(FIR_BACKEND "portable" CACHE STRING
+    "FIR backend: portable|liquid|ipp")
+set_property(CACHE FIR_BACKEND PROPERTY STRINGS
+    portable liquid ipp)
+
 option(FFT_ENABLE_BENCHMARKS "Build the benchmark harness" OFF)
 option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
+option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (fetched)" OFF)
+option(FIR_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR FIR comparison" OFF)
+option(FIR_ENABLE_IPP_BENCHMARK "Build the Intel IPP FIR benchmark backend (fetched with uv)" OFF)
 option(FFT_ENABLE_ALL_BENCHMARKS "Build every benchmark backend compatible with this host" OFF)
 option(FFT_BUILD_TESTS "Build correctness tests" ON)
 # Set ON in packaging/release CI to assert no forbidden libraries are present.
@@ -39,13 +47,16 @@ endif()
 #   - KFR:        cross-platform (x86 SSE2+ / ARM NEON).
 #   - oneMKL:     Intel x86 library, x86 only.
 #   - AOCL-FFTZ:  AMD x86 library, x86 only.
+#   - IPP:        Intel x86 library, x86 only.
 set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
+set(_compat_ipp FALSE)
 if(_host_x86)
     set(_compat_kfr TRUE)
     set(_compat_mkl TRUE)
     set(_compat_aocl TRUE)
+    set(_compat_ipp TRUE)
 elseif(_host_arm)
     set(_compat_kfr TRUE)
 endif()
@@ -58,6 +69,10 @@ if(FFT_ENABLE_ALL_BENCHMARKS)
     set(FFT_ENABLE_BENCHMARKS ON)
     if(_compat_kfr)
         set(FFT_ENABLE_KFR_BENCHMARK ON)
+        set(FIR_ENABLE_KFR_BENCHMARK ON)
+    endif()
+    if(_compat_ipp)
+        set(FIR_ENABLE_IPP_BENCHMARK ON)
     endif()
     if(_compat_mkl)
         set(FFT_ENABLE_MKL_BENCHMARK ON)
@@ -99,8 +114,12 @@ endif()
 if(_compat_aocl)
     list(APPEND _compat_list "aocl")
 endif()
+if(_compat_ipp)
+    list(APPEND _compat_list "ipp")
+endif()
 string(REPLACE ";" " " _compat_str "${_compat_list}")
 message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
+message(STATUS "dsp-dispatch FIR backend: ${FIR_BACKEND}")
 message(STATUS "dsp-dispatch host: ${CMAKE_SYSTEM_PROCESSOR} | "
     "compatible benchmark backends: ${_compat_str}")
 
@@ -119,12 +138,25 @@ else()
     message(FATAL_ERROR "Unknown FFT_BACKEND: ${FFT_BACKEND}")
 endif()
 
+set(_fir_backend_sources "")
+if(FIR_BACKEND STREQUAL "portable")
+    list(APPEND _fir_backend_sources src/backends/portable/fir_backend.cpp)
+elseif(FIR_BACKEND STREQUAL "liquid")
+    list(APPEND _fir_backend_sources src/backends/liquid/liquid_fir_backend.cpp)
+elseif(FIR_BACKEND STREQUAL "ipp")
+    list(APPEND _fir_backend_sources src/backends/ipp/ipp_fir_backend.cpp)
+else()
+    message(FATAL_ERROR "Unknown FIR_BACKEND: ${FIR_BACKEND}")
+endif()
+
 # ---------------------------------------------------------------------------
 # Library
 # ---------------------------------------------------------------------------
 add_library(dsp_dispatch
     src/common/fft.cpp
-    ${_backend_sources})
+    src/common/fir.cpp
+    ${_backend_sources}
+    ${_fir_backend_sources})
 target_include_directories(dsp_dispatch
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -142,6 +174,16 @@ endif()
 if(_resolved_backend STREQUAL "aocl")
     include(FetchAOCL)
     target_link_libraries(dsp_dispatch PRIVATE AOCL::FFTZ)
+endif()
+
+if(FIR_BACKEND STREQUAL "liquid")
+    include(FetchLiquidDSP)
+    target_link_libraries(dsp_dispatch PRIVATE LiquidDSP::LiquidDSP)
+endif()
+
+if(FIR_BACKEND STREQUAL "ipp")
+    include(FetchIPP)
+    target_link_libraries(dsp_dispatch PRIVATE IPP::IPP)
 endif()
 
 # Only the library and public headers are installable/redistributable. The
@@ -169,6 +211,28 @@ if(FFT_ENABLE_KFR_BENCHMARK)
     message(WARNING
         "KFR benchmark enabled: internal performance comparison only. The KFR "
         "code stays under bench/ and is never linked into the library or installed.")
+endif()
+
+if(FIR_ENABLE_KFR_BENCHMARK)
+    if(NOT FFT_ENABLE_BENCHMARKS)
+        message(FATAL_ERROR "FIR_ENABLE_KFR_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+    endif()
+    if(FFT_PACKAGING)
+        message(FATAL_ERROR
+            "FIR_ENABLE_KFR_BENCHMARK is ON while FFT_PACKAGING is ON. KFR is "
+            "benchmark-only and must never be shipped. Disable one of them.")
+    endif()
+    message(WARNING
+        "KFR FIR benchmark enabled: internal performance comparison only. The KFR "
+        "code stays under bench/ and is never linked into the library or installed.")
+endif()
+
+if(FIR_ENABLE_LIQUID_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FIR_ENABLE_LIQUID_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+endif()
+
+if(FIR_ENABLE_IPP_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FIR_ENABLE_IPP_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
 endif()
 
 # ---------------------------------------------------------------------------
