@@ -1,9 +1,15 @@
-# Results publishing:
-#   - The `benchmarks` (x86) and `benchmarks-arm` jobs collate results and upload
-#     them as artifacts; each also writes its tables to the job summary.
-#   - The `publish` job then deploys the charts to GitHub Pages and posts one
-#     sticky PR comment with the tables + inline chart images (see that job for
-#     the required one-time Pages setup).
+# Correctness tests (`backend-tests`, `fir-backend-tests`, `backend-tests-arm`)
+# run on every push to main and every pull request.
+#
+# Benchmarks are MANUAL-ONLY. The `benchmarks` (x86), `benchmarks-arm`, and
+# `publish` jobs run solely via workflow_dispatch on the main branch (Actions tab
+# -> "build-test-benchmark" -> Run workflow, with Branch: main). This keeps the
+# expensive multi-backend benchmark build off the push/PR path and off non-main
+# branches; request a run when you actually want fresh numbers.
+#   - `benchmarks` / `benchmarks-arm` collate results, upload them as artifacts,
+#     and write their tables to the job summary.
+#   - `publish` then deploys the charts to the GitHub Pages dashboard (see that
+#     job for the required one-time Pages setup).
 name: build-test-benchmark
 
 on:
@@ -22,14 +28,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Correctness (x86): build the production library with each implemented FFT
-  # backend and run the full normalized test suite against it.
+  # Discover which library backends are testable on each architecture. CMake is
+  # the single source of truth: a throwaway portable configure (fetches nothing)
+  # writes build/testable_backends.json, and this job republishes those per-arch
+  # lists as outputs that every test matrix below consumes via fromJson. Adding a
+  # backend in CMakeLists.txt updates CI automatically -- no backend list is
+  # hardcoded in this workflow.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      fft_x86: ${{ steps.matrix.outputs.fft_x86 }}
+      fft_arm: ${{ steps.matrix.outputs.fft_arm }}
+      fir_x86: ${{ steps.matrix.outputs.fir_x86 }}
+      fir_arm: ${{ steps.matrix.outputs.fir_arm }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Emit backend manifest (portable configure, no deps fetched)
+        run: cmake -S . -B build -G Ninja
+                   -DFFT_BACKEND=portable -DFIR_BACKEND=portable
+                   -DFFT_BUILD_TESTS=OFF
+
+      - name: Publish per-arch backend lists
+        id: matrix
+        run: |
+          json=build/testable_backends.json
+          {
+            echo "fft_x86=$(jq -c '.fft.x86' "$json")"
+            echo "fft_arm=$(jq -c '.fft.arm' "$json")"
+            echo "fir_x86=$(jq -c '.fir.x86' "$json")"
+            echo "fir_arm=$(jq -c '.fir.arm' "$json")"
+          } >> "$GITHUB_OUTPUT"
+
+  # Correctness (FFT, x86): build the production library with each x86-testable
+  # FFT backend and run the full normalized suite against it. The backend list
+  # comes from the setup job, not a hardcoded matrix.
   backend-tests:
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        backend: [portable, mkl, aocl, cmsis]
+        backend: ${{ fromJson(needs.setup.outputs.fft_x86) }}
     name: fft-tests (${{ matrix.backend }})
     steps:
       - uses: actions/checkout@v4
@@ -61,16 +104,17 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Correctness (x86): build the library with each implemented FIR backend and
-  # run the suite (fir_tests exercises the selected FIR backend; fft_tests uses
-  # the portable FFT backend). IPP is omitted here to avoid the Intel-wheel/uv
-  # dependency; it is covered by the benchmark smoke build when enabled.
+  # Correctness (FIR, x86): build the library with each x86-testable FIR backend
+  # (fir_tests exercises the selected FIR backend; fft_tests uses the portable
+  # FFT backend). The ipp backend resolves Intel's static wheels via uv, so uv +
+  # Python are installed only for that matrix leg.
   fir-backend-tests:
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        backend: [portable, liquid, cmsis]
+        backend: ${{ fromJson(needs.setup.outputs.fir_x86) }}
     name: fir-tests (${{ matrix.backend }})
     steps:
       - uses: actions/checkout@v4
@@ -78,11 +122,24 @@ jobs:
       - name: Install CMake + Ninja
         uses: lukka/get-cmake@latest
 
+      # FetchIPP shells out to `uv pip install` for Intel's ipp-static/ipp-devel
+      # wheels; uv needs a Python to target. Only the ipp leg pulls this in.
+      - name: Set up Python (IPP wheels)
+        if: matrix.backend == 'ipp'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv (IPP wheels)
+        if: matrix.backend == 'ipp'
+        uses: astral-sh/setup-uv@v6
+
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
           path: |
             build/_deps
+            build/_ipp
           key: deps-${{ github.event.repository.name }}-fir-${{ runner.os }}-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-fir-${{ runner.os }}-${{ matrix.backend }}-
 
@@ -97,21 +154,23 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Correctness (Arm/aarch64): the ARM-native backends. CMSIS uses the portable
-  # host build here (dependency-free; the compiler auto-vectorizes to NEON at -O3
-  # on armv8-a). CMSIS's hand-written NEON-intrinsic kernels need CMSIS-Core and
-  # are opt-in via -DCMSISDSP_USE_NEON=ON -DCMSISCORE=<path>.
+  # Correctness (FFT, Arm/aarch64): each Arm-testable FFT backend on a native
+  # Arm64 runner. CMSIS uses the portable host build here (dependency-free; the
+  # compiler auto-vectorizes to NEON at -O3 on armv8-a). CMSIS's hand-written
+  # NEON-intrinsic kernels need CMSIS-Core and are opt-in via
+  # -DCMSISDSP_USE_NEON=ON -DCMSISCORE=<path>.
   #
   # Uses a GitHub-hosted Arm64 Linux runner (free for public repos; Team/
   # Enterprise plans for private). If unavailable, swap to a QEMU cross build
   # (docker/setup-qemu-action + an arm64 container) at the cost of speed.
   backend-tests-arm:
+    needs: setup
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
-        backend: [portable, cmsis]
-    name: arm-tests (${{ matrix.backend }})
+        backend: ${{ fromJson(needs.setup.outputs.fft_arm) }}
+    name: arm-fft-tests (${{ matrix.backend }})
     steps:
       - uses: actions/checkout@v4
 
@@ -123,12 +182,47 @@ jobs:
         with:
           path: |
             build/_deps
-          key: deps-${{ github.event.repository.name }}-arm-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
-          restore-keys: deps-${{ github.event.repository.name }}-arm-${{ matrix.backend }}-
+          key: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
+          restore-keys: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                   -DFFT_BACKEND=${{ matrix.backend }} -DFIR_BACKEND=${{ matrix.backend }}
+                   -DFFT_BACKEND=${{ matrix.backend }} -DFFT_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Correctness (FIR, Arm/aarch64): each Arm-testable FIR backend (portable,
+  # cmsis, liquid -- all portable C) paired with the portable FFT backend. This
+  # is what closes the previous gap where Arm never exercised the liquid FIR path.
+  fir-backend-tests-arm:
+    needs: setup
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ${{ fromJson(needs.setup.outputs.fir_arm) }}
+    name: arm-fir-tests (${{ matrix.backend }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+          key: deps-${{ github.event.repository.name }}-arm-fir-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
+          restore-keys: deps-${{ github.event.repository.name }}-arm-fir-${{ matrix.backend }}-
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                   -DFFT_BACKEND=portable -DFIR_BACKEND=${{ matrix.backend }}
                    -DFFT_BUILD_TESTS=ON
 
       - name: Build
@@ -141,6 +235,9 @@ jobs:
   # and collate JSON -> tables + CSV + graph. Shared-runner numbers are a smoke
   # signal (the code compiles and runs), NOT regression-grade measurements.
   benchmarks:
+    # Manual-only, main-only: benchmarks run solely when requested via
+    # workflow_dispatch on the main branch, never on push or pull_request.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -172,22 +269,20 @@ jobs:
           key: deps-${{ github.event.repository.name }}-${{ runner.os }}-bench-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-${{ runner.os }}-bench-
 
-      - name: Configure (FFT + FIR backends)
+      # Enable every benchmark backend compatible with this host and let CMake
+      # host-gate the set -- the same single source of truth as the correctness
+      # matrix and exactly what `make benchmarks` uses. On x86 this expands to
+      # FFT portable/kfr/mkl/aocl/cmsis/fftw and FIR portable/liquid/kfr/ipp/cmsis.
+      # No backend list is hardcoded here, so a new backend (e.g. fftw) is picked
+      # up automatically.
+      - name: Configure (all host-compatible benchmark backends)
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                   -DFFT_ENABLE_BENCHMARKS=ON
-                   -DFFT_ENABLE_KFR_BENCHMARK=ON
-                   -DFFT_ENABLE_MKL_BENCHMARK=ON
-                   -DFFT_ENABLE_AOCL_BENCHMARK=ON
-                   -DFFT_ENABLE_CMSIS_BENCHMARK=ON
-                   -DFIR_ENABLE_LIQUID_BENCHMARK=ON
-                   -DFIR_ENABLE_KFR_BENCHMARK=ON
-                   -DFIR_ENABLE_IPP_BENCHMARK=ON
-                   -DFIR_ENABLE_CMSIS_BENCHMARK=ON
+                   -DDSP_ENABLE_ALL_BENCHMARKS=ON
 
+      # The fft_benchmarks / fir_benchmarks aggregate targets build exactly the
+      # fft_bench_* / fir_bench_* executables CMake configured for this host.
       - name: Build benchmark executables
-        run: cmake --build build --target
-                   fft_bench_portable fft_bench_kfr fft_bench_mkl fft_bench_aocl fft_bench_cmsis
-                   fir_bench_portable fir_bench_liquid fir_bench_kfr fir_bench_ipp fir_bench_cmsis
+        run: cmake --build build --target fft_benchmarks fir_benchmarks
 
       - name: Run + collate FFT benchmarks
         run: python tools/run_benchmarks.py --build-dir build --suite fft
@@ -221,9 +316,13 @@ jobs:
             bench_results/*_latency.png
             bench_results/*.json
 
-  # Benchmarks (Arm/aarch64): smoke the portable and CMSIS(NEON) backends for
-  # both suites on a native Arm64 runner. Same "smoke, not regression" caveat.
+  # Benchmarks (Arm/aarch64): smoke every Arm-compatible backend for both suites
+  # on a native Arm64 runner -- CMake host-gates the set to FFT portable/cmsis/fftw
+  # and FIR portable/cmsis/liquid (KFR is Clang-only on Arm, so gcc runners skip
+  # it). Same "smoke, not regression" caveat.
   benchmarks-arm:
+    # Manual-only, main-only (see the x86 `benchmarks` job).
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -247,16 +346,15 @@ jobs:
           key: deps-${{ github.event.repository.name }}-arm-bench-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-arm-bench-
 
-      - name: Configure (portable + CMSIS)
+      # Same host-gated switch as x86; on Arm it expands to FFT portable/cmsis/fftw
+      # and FIR portable/cmsis/liquid. No backend list is hardcoded here.
+      - name: Configure (all host-compatible benchmark backends)
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                   -DFFT_ENABLE_BENCHMARKS=ON
-                   -DFFT_ENABLE_CMSIS_BENCHMARK=ON
-                   -DFIR_ENABLE_CMSIS_BENCHMARK=ON
+                   -DDSP_ENABLE_ALL_BENCHMARKS=ON
 
+      # Aggregate targets build exactly what CMake configured for this host.
       - name: Build benchmark executables
-        run: cmake --build build --target
-                   fft_bench_portable fft_bench_cmsis
-                   fir_bench_portable fir_bench_cmsis
+        run: cmake --build build --target fft_benchmarks fir_benchmarks
 
       - name: Run + collate FFT benchmarks
         run: python tools/run_benchmarks.py --build-dir build --suite fft
@@ -291,16 +389,13 @@ jobs:
             bench_results/*.json
 
   # Publish the docs site (with the interactive benchmark dashboard) to GitHub
-  # Pages, and post ONE sticky PR comment with each PR's charts + tables. A
-  # single deploy job (rather than each benchmark job) avoids two runners racing
-  # to push the gh-pages branch.
+  # Pages. A single deploy job (rather than each benchmark job) avoids two runners
+  # racing to push the gh-pages branch.
   #
-  #   - On push to main: collate the benchmark JSON into the dashboard data,
-  #     build the MkDocs site, and deploy it to the Pages ROOT (keep_files:true
-  #     preserves any pr-<n>/ preview dirs). This is the live site.
-  #   - On pull_request: deploy just this PR's latency PNGs to a pr-<n>/ subdir
-  #     and post a sticky comment linking them + the tables. The interactive
-  #     dashboard tracks main only.
+  # Manual-only, main-only: this runs only for the workflow_dispatch benchmark run
+  # on main (its `needs` are gated the same way). It collates the fresh benchmark
+  # JSON into the dashboard data, builds the MkDocs site, and deploys it to the
+  # Pages ROOT (keep_files:true preserves anything else already published).
   #
   # ONE-TIME SETUP: point Pages at the gh-pages branch —
   #   Settings -> Pages -> Source: "Deploy from a branch" -> Branch: gh-pages, / (root).
@@ -310,15 +405,11 @@ jobs:
     needs: [benchmarks, benchmarks-arm]
     if: >-
       !cancelled()
-      && (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        || (github.event_name == 'pull_request'
-            && github.event.pull_request.head.repo.full_name == github.repository)
-      )
+      && github.event_name == 'workflow_dispatch'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write        # push to the gh-pages branch
-      pull-requests: write   # post the sticky comment
     steps:
       - uses: actions/checkout@v4   # need docs/, mkdocs.yml, tools/ to build
 
@@ -336,19 +427,15 @@ jobs:
           name: benchmark-results-arm
           path: results/arm
 
-      # ---------- main: build + deploy the full docs site ----------
       - name: Set up Python
-        if: github.event_name == 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install docs tooling
-        if: github.event_name == 'push'
         run: python -m pip install --upgrade mkdocs-material
 
       - name: Generate dashboard data
-        if: github.event_name == 'push'
         run: |
           python tools/build_dashboard.py \
             --arch x86:x86_64:results/x86 \
@@ -358,71 +445,11 @@ jobs:
             --out docs/assets/bench-data.js
 
       - name: Build docs site
-        if: github.event_name == 'push'
         run: mkdocs build --strict --site-dir site
 
       - name: Deploy docs site to GitHub Pages
-        if: github.event_name == 'push'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          keep_files: true       # preserve pr-<n>/ preview dirs at the root
-
-      # ---------- pull_request: sticky comment with this PR's charts + tables ----------
-      - name: Assemble PR comment + preview charts
-        if: github.event_name == 'pull_request'
-        id: assemble
-        run: |
-          set -e
-          SUBDIR="pr-${{ github.event.pull_request.number }}"
-          echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          repo="${{ github.event.repository.name }}"
-          IMGBASE="https://${owner}.github.io/${repo}/${SUBDIR}"
-          SITEBASE="https://${owner}.github.io/${repo}"
-
-          mkdir -p prsite
-          {
-            echo "## Benchmarks — \`${{ github.sha }}\`"
-            echo ""
-            echo "📊 [Live dashboard (main)](${SITEBASE}/benchmarks/) · charts below are this PR's smoke run — _shared runners, not regression-grade_"
-          } > comment.md
-
-          for arch in x86 arm; do
-            src="results/${arch}"
-            [ -d "$src" ] || continue
-            [ "$arch" = "x86" ] && label="x86_64" || label="Arm64"
-            mkdir -p "prsite/${arch}"
-            cp "$src"/*_latency.png "prsite/${arch}/" 2>/dev/null || true
-
-            printf '\n### %s\n\n' "$label" >> comment.md
-            for suite in fft fir; do
-              png="${suite}_latency.png"
-              if [ -f "prsite/${arch}/${png}" ]; then
-                echo "![${label} ${suite} latency](${IMGBASE}/${arch}/${png})" >> comment.md
-              fi
-            done
-            printf '\n<details><summary>%s tables</summary>\n\n' "$label" >> comment.md
-            for suite in fft fir; do
-              md="${src}/${suite}_results.md"
-              [ -f "$md" ] && { cat "$md" >> comment.md; printf '\n' >> comment.md; }
-            done
-            printf '</details>\n' >> comment.md
-          done
-
-      - name: Deploy PR preview charts
-        if: github.event_name == 'pull_request'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./prsite
-          destination_dir: ${{ steps.assemble.outputs.subdir }}
           keep_files: true
-
-      - name: Post results to PR
-        if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: benchmarks
-          path: comment.md

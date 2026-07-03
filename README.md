@@ -84,10 +84,11 @@ not their relative performance. Run on dedicated hardware for real numbers.
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl` (Intel oneMKL fetched via `cmake/FetchMKL.cmake`). Requires benchmarks. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl` (AMD AOCL-FFTZ fetched + compiled via `cmake/FetchAOCL.cmake`). Requires benchmarks. |
+| `FFT_ENABLE_FFTW_BENCHMARK` | `OFF` | Also build `fft_bench_fftw` (FFTW fetched + compiled via `cmake/FetchFFTW.cmake`; x86 + Arm). Requires benchmarks; forbidden when `FFT_PACKAGING=ON` (GPL). |
 | `FIR_ENABLE_LIQUID_BENCHMARK` | `OFF` | Also build `fir_bench_liquid` (liquid-dsp fetched via `cmake/FetchLiquidDSP.cmake`). Requires benchmarks. |
 | `FIR_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fir_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FIR_ENABLE_IPP_BENCHMARK` | `OFF` | Also build `fir_bench_ipp` (Intel IPP resolved by `cmake/FetchIPP.cmake`; can install `ipp-static` with `uv`). Requires benchmarks. |
-| `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the benchmark harness plus every backend compatible with this host (FFT: `kfr` plus x86-only `mkl`/`aocl`; FIR: `kfr` plus x86-only `ipp`). Equivalent to setting the individual flags for compatible backends. This is what `make benchmarks` uses. |
+| `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the benchmark harness plus every backend compatible with this host (FFT: `kfr`, `cmsis`, `fftw` plus x86-only `mkl`/`aocl`; FIR: `kfr`, `cmsis`, `liquid` plus x86-only `ipp`). Equivalent to setting the individual flags for compatible backends. This is what `make benchmarks` uses. |
 | `FFT_PACKAGING` | `OFF` | Set in release/packaging CI to assert no forbidden (benchmark-only) libraries are present. |
 
 ## Benchmarks

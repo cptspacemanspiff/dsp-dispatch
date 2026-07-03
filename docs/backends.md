@@ -13,6 +13,7 @@ unchanged.
 | **AMD AOCL-FFTZ** | `-DFFT_BACKEND=aocl` | ✅ implemented | AMD's "Zen" FFT, built from source by `cmake/FetchAOCL.cmake`. Complex any length; real excludes 7-non-smooth lengths (reports `UnsupportedLength`). |
 | **CMSIS-DSP** | `-DFFT_BACKEND=cmsis` | ✅ implemented | Arm's DSP library. Portable host build auto-vectorizes to NEON at `-O3`; hand-written NEON kernels are opt-in via `-DCMSISDSP_USE_NEON=ON -DCMSISCORE=<path>`. |
 | **KFR** | *bench-only* | ⚙️ benchmark | Comparison baseline only — see the packaging note below. |
+| **FFTW** | *bench-only* | ⚙️ benchmark | Reference-FFT comparison baseline, x86 + Arm. Single-precision `fftw3f`, complex f32. GPL — same packaging rules as KFR. |
 | **Apple vDSP** | `-DFFT_BACKEND=vdsp` | 🚧 scaffolded | Compile-error stub until implemented. |
 
 `FFT_BACKEND=auto` (the default) resolves to `vdsp` on Apple, `cmsis` on Arm,
@@ -43,6 +44,7 @@ Unsupported precision/configurations are reported at plan creation via
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl`. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl`. |
 | `FFT_ENABLE_CMSIS_BENCHMARK` | `OFF` | Also build `fft_bench_cmsis`. |
+| `FFT_ENABLE_FFTW_BENCHMARK` | `OFF` | Also build `fft_bench_fftw` (x86 + Arm). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FIR_ENABLE_LIQUID_BENCHMARK` | `OFF` | Also build `fir_bench_liquid`. |
 | `FIR_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fir_bench_kfr`. Forbidden when `FFT_PACKAGING=ON`. |
 | `FIR_ENABLE_IPP_BENCHMARK` | `OFF` | Also build `fir_bench_ipp`. |
@@ -50,7 +52,8 @@ Unsupported precision/configurations are reported at plan creation via
 | `FFT_ENABLE_ALL_BENCHMARKS` | `OFF` | Enable the harness plus every backend compatible with this host. What `make benchmarks` uses. |
 | `FFT_PACKAGING` | `OFF` | Set in release CI to assert no forbidden (benchmark-only, e.g. KFR) libraries are present. |
 
-!!! warning "KFR is benchmark-only and must never be packaged"
-    KFR code lives only under `bench/`; the library never links it and the bench
-    target has no install rule, so it can't enter a redistributable artifact.
-    Setting `-DFFT_PACKAGING=ON` with KFR enabled is a hard configure error.
+!!! warning "KFR and FFTW are benchmark-only and must never be packaged"
+    Both are GPL. Their code lives only under `bench/`; the library never links
+    them and the bench target has no install rule, so they can't enter a
+    redistributable artifact. Setting `-DFFT_PACKAGING=ON` with either enabled is
+    a hard configure error.

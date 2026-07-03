@@ -47,6 +47,7 @@ option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
 option(FFT_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FFT benchmark backend (fetched)" OFF)
+option(FFT_ENABLE_FFTW_BENCHMARK "Build the FFTW FFT benchmark backend (fetched; benchmark-only, GPL)" OFF)
 option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (fetched)" OFF)
 option(FIR_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR FIR comparison" OFF)
 option(FIR_ENABLE_IPP_BENCHMARK "Build the Intel IPP FIR benchmark backend (fetched with uv)" OFF)
@@ -74,6 +75,48 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
     set(_host_arm TRUE)
 endif()
 
+# ---------------------------------------------------------------------------
+# Testable library-backend manifest (single source of truth for CI)
+# ---------------------------------------------------------------------------
+# The correctness test matrix in .github/workflows/ is GENERATED from this table
+# rather than hardcoded in YAML: CI configures once, reads the emitted
+# testable_backends.json, and fans a job out per backend for each arch. Adding or
+# removing a library backend here is therefore the only edit CI needs -- the same
+# "choosing backends is CMake's job" principle the Makefile follows for benchmarks.
+#
+# The table is deliberately STATIC (host-independent) so one configure on any
+# machine yields both the x86 and Arm lists. Compatibility rules:
+#   - portable / cmsis / liquid : portable C, buildable and tested on every arch.
+#   - mkl / aocl / ipp          : x86-only vendor libraries.
+#   - vdsp                      : Apple-only AND still a compile-error stub, so it
+#                                 is intentionally omitted from the tested set.
+set(_fft_backends_x86 portable cmsis mkl aocl)
+set(_fft_backends_arm portable cmsis)
+set(_fir_backends_x86 portable cmsis liquid ipp)
+set(_fir_backends_arm portable cmsis liquid)
+
+# Render a CMake list as a compact JSON array of strings: a b c -> ["a","b","c"].
+function(_dsp_json_string_array _out)
+    set(_quoted "")
+    foreach(_item ${ARGN})
+        list(APPEND _quoted "\"${_item}\"")
+    endforeach()
+    list(JOIN _quoted "," _joined)
+    set(${_out} "[${_joined}]" PARENT_SCOPE)
+endfunction()
+
+_dsp_json_string_array(_json_fft_x86 ${_fft_backends_x86})
+_dsp_json_string_array(_json_fft_arm ${_fft_backends_arm})
+_dsp_json_string_array(_json_fir_x86 ${_fir_backends_x86})
+_dsp_json_string_array(_json_fir_arm ${_fir_backends_arm})
+
+file(WRITE "${CMAKE_BINARY_DIR}/testable_backends.json"
+"{
+  \"fft\": { \"x86\": ${_json_fft_x86}, \"arm\": ${_json_fft_arm} },
+  \"fir\": { \"x86\": ${_json_fir_x86}, \"arm\": ${_json_fir_arm} }
+}
+")
+
 # Which optional benchmark backends can this host build? (portable is always
 # available and needs no external dependency.) Best-effort guide:
 #   - KFR:        x86 (SSE2+, any compiler); Arm (NEON) requires Clang, since
@@ -82,14 +125,16 @@ endif()
 #   - AOCL-FFTZ:  AMD x86 library, x86 only.
 #   - IPP:        Intel x86 library, x86 only.
 #   - liquid-dsp: portable C, every host.
+#   - FFTW:       portable C (SSE2/AVX/AVX2 on x86, NEON on Arm), every host.
 set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
 set(_compat_ipp FALSE)
-# CMSIS-DSP and liquid-dsp are portable C (scalar host build on x86, NEON on
-# Arm), so they are compatible with every host we target.
+# CMSIS-DSP, liquid-dsp and FFTW are portable C (scalar/SIMD host build on x86,
+# NEON on Arm), so they are compatible with every host we target.
 set(_compat_cmsis TRUE)
 set(_compat_liquid TRUE)
+set(_compat_fftw TRUE)
 if(_host_x86)
     set(_compat_kfr TRUE)
     set(_compat_mkl TRUE)
@@ -125,6 +170,9 @@ if(FFT_ENABLE_ALL_BENCHMARKS OR DSP_ENABLE_ALL_BENCHMARKS)
     if(_compat_cmsis)
         set(FIR_ENABLE_CMSIS_BENCHMARK ON)
         set(FFT_ENABLE_CMSIS_BENCHMARK ON)
+    endif()
+    if(_compat_fftw)
+        set(FFT_ENABLE_FFTW_BENCHMARK ON)
     endif()
     if(_compat_mkl)
         set(FFT_ENABLE_MKL_BENCHMARK ON)
@@ -180,6 +228,9 @@ if(_compat_cmsis)
 endif()
 if(_compat_liquid)
     list(APPEND _compat_list "liquid")
+endif()
+if(_compat_fftw)
+    list(APPEND _compat_list "fftw")
 endif()
 string(REPLACE ";" " " _compat_str "${_compat_list}")
 message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
@@ -318,6 +369,23 @@ if(FIR_ENABLE_KFR_BENCHMARK)
     endif()
     message(WARNING
         "KFR FIR benchmark enabled: internal performance comparison only. The KFR "
+        "code stays under bench/ and is never linked into the library or installed.")
+endif()
+
+# FFTW is GPL and benchmark-only: same rules as KFR. It may be benchmarked in an
+# optimized Release build, but must never enter a packaged/redistributable
+# artifact. Enforced here and by CI's dependency/packaged-file inspection.
+if(FFT_ENABLE_FFTW_BENCHMARK)
+    if(NOT FFT_ENABLE_BENCHMARKS)
+        message(FATAL_ERROR "FFT_ENABLE_FFTW_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+    endif()
+    if(FFT_PACKAGING)
+        message(FATAL_ERROR
+            "FFT_ENABLE_FFTW_BENCHMARK is ON while FFT_PACKAGING is ON. FFTW is "
+            "GPL and benchmark-only; it must never be shipped. Disable one of them.")
+    endif()
+    message(WARNING
+        "FFTW benchmark enabled: internal performance comparison only. The FFTW "
         "code stays under bench/ and is never linked into the library or installed.")
 endif()
 

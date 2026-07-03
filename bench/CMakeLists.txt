@@ -155,6 +155,17 @@ if(FFT_ENABLE_CMSIS_BENCHMARK)
     message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; portable/host, compiler auto-vectorizes to NEON on Arm).")
 endif()
 
+# FFTW: benchmark-only (GPL), fetched and built from source. Single precision
+# (fftw3f), complex f32 -- the standard c2c benchmark. Works on x86 and Arm.
+# Lives entirely under bench/ and is never linked into the library or installed.
+if(FFT_ENABLE_FFTW_BENCHMARK)
+    include(FetchFFTW)
+    fft_add_bench_backend(fftw
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/fftw/fftw_backend.cpp
+        FFTW::FFTW)
+    message(STATUS "FFTW benchmark backend enabled (benchmark-only, never shipped).")
+endif()
+
 # Aggregate targets: build every FFT (resp. FIR) benchmark executable that was
 # actually configured for this host. The Makefile builds these instead of naming
 # individual backends, so which backends exist stays entirely CMake's decision.

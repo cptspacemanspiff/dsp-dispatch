@@ -30,6 +30,23 @@ components:
       FFT_ENABLE_BENCHMARKS. Source lives only under bench/, which has no install
       rule and is never packaged.
 
+  - name: FFTW
+    version: fftw-3.3.10
+    license: GPL-2.0-or-later / commercial (dual)
+    source: https://github.com/FFTW/fftw3
+    used_by: bench (gated by FFT_ENABLE_FFTW_BENCHMARK)
+    production: false
+    notes: >
+      BENCHMARK-ONLY reference-FFT comparison, x86 and Arm. Must never be linked
+      into or packaged with a production artifact unless a commercial license is
+      acquired. Built static and single-threaded from source via
+      cmake/FetchFFTW.cmake with ENABLE_FLOAT=ON (single-precision fftw3f);
+      complex f32 only, matching the standard c2c benchmark. SIMD codelets:
+      SSE2/AVX/AVX2 on x86, NEON on Arm (single-precision). May be benchmarked in
+      an optimized Release build; the build forbids FFT_ENABLE_FFTW_BENCHMARK when
+      FFT_PACKAGING is ON, and requires FFT_ENABLE_BENCHMARKS. Source lives only
+      under bench/, which has no install rule and is never packaged.
+
   # ---- Production backend candidates (not yet integrated) ----
   - name: Apple Accelerate / vDSP
     version: platform
