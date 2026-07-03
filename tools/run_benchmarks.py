@@ -391,8 +391,9 @@ def main() -> int:
                     help="output directory for JSON/tables/graph (default: bench_results)")
     ap.add_argument("--backends", nargs="*",
                     help="restrict to these backend names (default: all discovered)")
-    ap.add_argument("--baseline", default="portable",
-                    help="backend to compute speedups against (default: portable)")
+    ap.add_argument("--baseline", default=None,
+                    help="backend to compute speedups against "
+                         "(default: pocketfft for fft, portable for fir)")
     ap.add_argument("--filter", default=None, help="--benchmark_filter passthrough")
     ap.add_argument("--min-time", default="0.1s", help="--benchmark_min_time (default: 0.1s)")
     ap.add_argument("--repetitions", type=int, default=None,
@@ -400,6 +401,8 @@ def main() -> int:
     ap.add_argument("--no-run", action="store_true",
                     help="do not run benchmarks; re-collate existing JSON in --out-dir")
     args = ap.parse_args()
+    if args.baseline is None:
+        args.baseline = "portable" if args.suite == "fir" else "pocketfft"
 
     bench_dir = args.build_dir / "bench"
     args.out_dir.mkdir(parents=True, exist_ok=True)

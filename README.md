@@ -21,9 +21,6 @@ Implemented and tested here:
   function pointer into monomorphized backend code; `execute` is a single
   indirect call hoistable out of a caller's loop. No virtual calls, and no
   dispatch inside the transform itself (Phase 3 note).
-- **Portable backend** (`src/backends/portable/`) — radix-2 for powers of two,
-  Bluestein for all other lengths; complex, real-to-complex, and complex-to-real
-  in `float32` and `float64`, with batching.
 - **Correctness tests** (`tests/`) against a reference DFT, round-trip, impulse,
   batch, and error handling — Phase 5.
 - **Benchmark harness** (`bench/`) on Google Benchmark: plan creation timed
@@ -79,8 +76,8 @@ ctest --test-dir build --output-on-failure
 `.github/workflows/benchmarks.yml` runs on push/PR (and manual dispatch):
 
 - **backend-tests** — builds the production library with each backend in the
-  per-arch matrix (x86: `portable`, `cmsis`, `pocketfft`, `mkl`, `aocl`; Arm:
-  `portable`, `cmsis`, `pocketfft`, `armpl`) and runs the full test suite
+  per-arch matrix (x86: `cmsis`, `pocketfft`, `mkl`, `aocl`; Arm:
+  `cmsis`, `pocketfft`, `armpl`) and runs the full test suite
   against it.
 - **benchmarks** — builds every `fft_bench_*`, runs `tools/run_benchmarks.py`,
   posts the results table to the run summary, and uploads `bench_results/`
@@ -94,10 +91,10 @@ not their relative performance. Run on dedicated hardware for real numbers.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|armpl\|pocketfft\|portable`. `auto` resolves to `vdsp` on Apple, `armpl` on Arm, `aocl` on x86, else `portable`. `portable`, `mkl`, `aocl`, `armpl`, `pocketfft`, and `cmsis` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`; `armpl` fetches Arm Performance Libraries via `cmake/FetchArmPL.cmake`; `pocketfft` fetches the PocketFFT header via `cmake/FetchPocketFFT.cmake`). `pocketfft` is a portable, redistributable backend on any host; `-DFFT_BACKEND=cmsis` on Arm is the download-free NEON path. |
+| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|armpl\|pocketfft`. `auto` resolves to `vdsp` on Apple, `armpl` on Arm, `aocl` on x86, else `pocketfft`. `mkl`, `aocl`, `armpl`, `pocketfft`, and `cmsis` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`; `armpl` fetches Arm Performance Libraries via `cmake/FetchArmPL.cmake`; `pocketfft` fetches the PocketFFT header via `cmake/FetchPocketFFT.cmake`). `pocketfft` is a portable, redistributable backend on any host; `-DFFT_BACKEND=cmsis` on Arm is the download-free NEON path. |
 | `FIR_BACKEND` | `portable` | `portable\|liquid\|ipp`. `portable` is the in-tree direct FIR backend. `liquid` fetches and links liquid-dsp. `ipp` uses Intel IPP from an installed package or from `ipp-devel` + `ipp-static` wheels installed with `uv`. |
 | `FFT_BUILD_TESTS` | `ON` | Build the correctness tests. |
-| `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark (fetched if not installed). Always builds `fft_bench_portable`. |
+| `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark (fetched if not installed). Always builds `fft_bench_pocketfft`. |
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr` (KFR fetched via FetchContent). Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl` (Intel oneMKL fetched via `cmake/FetchMKL.cmake`). Requires benchmarks. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl` (AMD AOCL-FFTZ fetched + compiled via `cmake/FetchAOCL.cmake`). Requires benchmarks. |
@@ -120,9 +117,9 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DFFT_ENABLE_BENCHMARKS=ON \
       -DFFT_ENABLE_KFR_BENCHMARK=ON -DFFT_ENABLE_MKL_BENCHMARK=ON \
       -DFFT_ENABLE_AOCL_BENCHMARK=ON -S . -B build-bench
 cmake --build build-bench --target \
-      fft_bench_portable fft_bench_kfr fft_bench_mkl fft_bench_aocl
+      fft_bench_pocketfft fft_bench_kfr fft_bench_mkl fft_bench_aocl
 
-./build-bench/bench/fft_bench_portable        # in-tree portable backend
+./build-bench/bench/fft_bench_pocketfft       # PocketFFT (portable baseline)
 ./build-bench/bench/fft_bench_kfr             # KFR    (fetched via FetchContent)
 ./build-bench/bench/fft_bench_mkl             # oneMKL (fetched via cmake/FetchMKL.cmake)
 ./build-bench/bench/fft_bench_aocl            # AOCL-FFTZ (built via cmake/FetchAOCL.cmake)
@@ -145,10 +142,11 @@ tools/run_benchmarks.py --build-dir build-bench --suite fir
 ```
 
 It prints execution-latency and throughput tables (with speedup vs a baseline,
-`--baseline portable` by default). FFT graphs include latency and throughput;
+`--baseline pocketfft` for FFT and `--baseline portable` for FIR by default).
+FFT graphs include latency and throughput;
 FIR graphs use one latency subplot per tap count, with block size on the x-axis.
 Useful flags: `--filter execute`, `--min-time 0.2s`, `--repetitions 30`,
-`--backends portable kfr ipp`, `--suite fir`, and `--no-run` to re-collate
+`--backends pocketfft kfr ipp`, `--suite fir`, and `--no-run` to re-collate
 existing JSON without re-running.
 
 ### Raw export
@@ -158,13 +156,13 @@ Or use Google Benchmark's built-in flags directly — JSON or CSV, stdout or fil
 ```sh
 ./build-bench/bench/fft_bench_kfr \
     --benchmark_out=kfr.json --benchmark_out_format=json
-./build-bench/bench/fft_bench_portable --benchmark_format=csv > portable.csv
-./build-bench/bench/fft_bench_portable --benchmark_filter='1024'
+./build-bench/bench/fft_bench_pocketfft --benchmark_format=csv > pocketfft.csv
+./build-bench/bench/fft_bench_pocketfft --benchmark_filter='1024'
 ```
 
 ### Fair comparison (ISA)
 
-KFR defaults to a conservative `sse2` baseline. Raise it (and match the portable
+KFR defaults to a conservative `sse2` baseline. Raise it (and match the pocketfft
 side) for a meaningful comparison:
 
 ```sh

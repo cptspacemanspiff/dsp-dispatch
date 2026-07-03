@@ -10,9 +10,9 @@ workload before final backend decisions (Phase 7).
 | Dimension | Decision |
 |---|---|
 | Transform types | Complex-to-complex, real-to-complex, complex-to-real |
-| Precision | `float32` first; `float64` supported by the portable backend, required elsewhere only if a product needs it |
+| Precision | `float32` first; `float64` supported by the portable `pocketfft` FFT backend, required elsewhere only if a product needs it |
 | Dimensions | 1D only **(initial)** |
-| Lengths | Arbitrary `N >= 1`. Powers of two are the fast path; other lengths use Bluestein in the portable backend **(initial)** |
+| Lengths | Arbitrary `N >= 1`. Powers of two are the fast path; other lengths are handled (Bluestein) by the portable `pocketfft` FFT backend **(initial)** |
 | Batch | 1..N independent transforms laid out contiguously |
 | In-place | Permitted for complex transforms; real transforms are out-of-place **(initial)** |
 | Threading | FFT execution may run on real-time threads; backends must not allocate or lock in `execute` |
@@ -60,7 +60,8 @@ final selection.
   transforms versus the double-precision reference DFT; round-trip error below
   `1e-4`. Tighten for `float64`.
 - **Backend retention (Phase 7):** a vendor backend is kept only if it improves
-  the primary workload by at least **15%** over the portable fallback, in
+  the primary workload by at least **15%** over the portable `pocketfft`
+  fallback, in
   addition to passing correctness, meeting redistribution terms, supporting all
   required shapes, and meeting binary-size/init constraints.
 

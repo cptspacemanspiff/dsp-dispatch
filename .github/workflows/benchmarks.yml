@@ -29,8 +29,9 @@ concurrency:
 
 jobs:
   # Discover which library backends are testable on each architecture. CMake is
-  # the single source of truth: a throwaway portable configure (fetches nothing)
-  # writes build/testable_backends.json, and this job republishes those per-arch
+  # the single source of truth: a throwaway pocketfft configure (fetches only the
+  # header-only pocketfft, no build) writes build/testable_backends.json (the list
+  # is static, independent of the selected backend), and this job republishes those per-arch
   # lists as outputs that every test matrix below consumes via fromJson. Adding a
   # backend in CMakeLists.txt updates CI automatically -- no backend list is
   # hardcoded in this workflow.
@@ -47,9 +48,9 @@ jobs:
       - name: Install CMake + Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Emit backend manifest (portable configure, no deps fetched)
+      - name: Emit backend manifest (pocketfft configure, header-only fetch)
         run: cmake -S . -B build -G Ninja
-                   -DFFT_BACKEND=portable -DFIR_BACKEND=portable
+                   -DFFT_BACKEND=pocketfft -DFIR_BACKEND=portable
                    -DFFT_BUILD_TESTS=OFF
 
       - name: Publish per-arch backend lists
@@ -106,7 +107,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   # Correctness (FIR, x86): build the library with each x86-testable FIR backend
-  # (fir_tests exercises the selected FIR backend; fft_tests uses the portable
+  # (fir_tests exercises the selected FIR backend; fft_tests uses the pocketfft
   # FFT backend). The ipp backend resolves Intel's static wheels via uv, so uv +
   # Python are installed only for that matrix leg.
   fir-backend-tests:
@@ -146,7 +147,7 @@ jobs:
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                   -DFFT_BACKEND=portable -DFIR_BACKEND=${{ matrix.backend }}
+                   -DFFT_BACKEND=pocketfft -DFIR_BACKEND=${{ matrix.backend }}
                    -DFFT_BUILD_TESTS=ON
 
       - name: Build
@@ -202,7 +203,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   # Correctness (FIR, Arm/aarch64): each Arm-testable FIR backend (portable,
-  # cmsis, liquid -- all portable C) paired with the portable FFT backend. This
+  # cmsis, liquid -- all portable C) paired with the pocketfft FFT backend. This
   # is what closes the previous gap where Arm never exercised the liquid FIR path.
   fir-backend-tests-arm:
     needs: setup
@@ -228,7 +229,7 @@ jobs:
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                   -DFFT_BACKEND=portable -DFIR_BACKEND=${{ matrix.backend }}
+                   -DFFT_BACKEND=pocketfft -DFIR_BACKEND=${{ matrix.backend }}
                    -DFFT_BUILD_TESTS=ON
 
       - name: Build
@@ -278,7 +279,7 @@ jobs:
       # Enable every benchmark backend compatible with this host and let CMake
       # host-gate the set -- the same single source of truth as the correctness
       # matrix and exactly what `make benchmarks` uses. On x86 this expands to
-      # FFT portable/kfr/mkl/aocl/cmsis/fftw and FIR portable/liquid/kfr/ipp/cmsis.
+      # FFT pocketfft/kfr/mkl/aocl/cmsis/fftw and FIR portable/liquid/kfr/ipp/cmsis.
       # No backend list is hardcoded here, so a new backend (e.g. fftw) is picked
       # up automatically.
       - name: Configure (all host-compatible benchmark backends)
@@ -323,7 +324,7 @@ jobs:
             bench_results/*.json
 
   # Benchmarks (Arm/aarch64): smoke every Arm-compatible backend for both suites
-  # on a native Arm64 runner -- CMake host-gates the set to FFT portable/cmsis/fftw
+  # on a native Arm64 runner -- CMake host-gates the set to FFT pocketfft/cmsis/fftw
   # and FIR portable/cmsis/liquid (KFR is Clang-only on Arm, so gcc runners skip
   # it). Same "smoke, not regression" caveat.
   benchmarks-arm:
@@ -352,7 +353,7 @@ jobs:
           key: deps-${{ github.event.repository.name }}-arm-bench-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-arm-bench-
 
-      # Same host-gated switch as x86; on Arm it expands to FFT portable/cmsis/fftw
+      # Same host-gated switch as x86; on Arm it expands to FFT pocketfft/cmsis/fftw
       # and FIR portable/cmsis/liquid. No backend list is hardcoded here.
       - name: Configure (all host-compatible benchmark backends)
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

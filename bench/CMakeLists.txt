@@ -3,7 +3,7 @@
 # Each benchmarked backend becomes its own static library (shared common code +
 # that backend's BackendPlan implementation) and its own executable built from
 # the single backend-agnostic harness (bench_fft.cpp). This is what lets you run
-# `fft_bench_portable` and `fft_bench_kfr` side by side from one build.
+# `fft_bench_pocketfft` and `fft_bench_kfr` side by side from one build.
 
 # fft_add_bench_backend(<name> <backend_source>)
 # Extra args after the source are passed to target_link_libraries on the lib.
@@ -30,9 +30,8 @@ function(fft_add_bench_backend name backend_src)
     set_property(GLOBAL APPEND PROPERTY DSP_FFT_BENCH_TARGETS fft_bench_${name})
 endfunction()
 
-# Portable: always available, no external dependencies.
-fft_add_bench_backend(portable
-    ${PROJECT_SOURCE_DIR}/src/backends/portable/portable_backend.cpp)
+# PocketFFT is the always-available FFT baseline (registered below, auto-enabled
+# whenever the benchmark harness is built); it is fetched header-only.
 
 # fir_add_bench_backend(<name> <backend_source>)
 # Extra args after the source are passed to target_link_libraries on the lib.
@@ -189,7 +188,8 @@ endif()
 # Aggregate targets: build every FFT (resp. FIR) benchmark executable that was
 # actually configured for this host. The Makefile builds these instead of naming
 # individual backends, so which backends exist stays entirely CMake's decision.
-# Portable is always registered, so both properties are non-empty.
+# The FIR portable backend is always registered; on the FFT side PocketFFT is the
+# auto-enabled baseline, so both properties are non-empty for a benchmark build.
 get_property(_fft_bench_targets GLOBAL PROPERTY DSP_FFT_BENCH_TARGETS)
 add_custom_target(fft_benchmarks DEPENDS ${_fft_bench_targets})
 get_property(_fir_bench_targets GLOBAL PROPERTY DSP_FIR_BENCH_TARGETS)

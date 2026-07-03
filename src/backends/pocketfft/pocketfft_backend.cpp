@@ -5,8 +5,8 @@
 // AArch64 -- so unlike the vendor backends (oneMKL/AOCL on x86, ArmPL on Arm) it
 // is a single portable backend for every host, and a redistributable one. It
 // supports complex, real-to-complex, and complex-to-real transforms of ANY
-// length in f32/f64, which is why the manifest lists it as the broad-length
-// portable fallback candidate alongside the in-tree radix-2/Bluestein backend.
+// length in f32/f64, which is why it is the broad-length portable path and the
+// `auto` fallback on any arch without a vendor backend.
 //
 // The public pocketfft::{c2c,r2c,c2r} API is stride-based and takes the output
 // scale factor directly, which maps cleanly onto the normalized contract:
@@ -21,9 +21,8 @@
 // length-keyed cache; POCKETFFT_CACHE_SIZE (set below) enables it, and plan
 // creation pre-warms it with one throwaway transform so the first execute reuses
 // the cached plan. (pocketfft still allocates a small transform scratch inside
-// each call -- inherent to the header-only design; the in-tree portable backend
-// remains the strictly allocation-free one.) Single-threaded: nthreads is always
-// 1 and POCKETFFT_NO_MULTITHREADING compiles out the threading path.
+// each call -- inherent to the header-only design.) Single-threaded: nthreads is
+// always 1 and POCKETFFT_NO_MULTITHREADING compiles out the threading path.
 #define POCKETFFT_NO_MULTITHREADING
 #define POCKETFFT_CACHE_SIZE 16
 

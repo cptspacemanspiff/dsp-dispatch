@@ -8,9 +8,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-By default this builds the `portable` FFT and FIR backends and runs the full
-correctness suite. To select a different backend, set `FFT_BACKEND` /
-`FIR_BACKEND` at configure time — see [Backends](backends.md).
+By default this auto-selects the platform FFT backend (`FFT_BACKEND=auto`: the
+vendor library per platform, falling back to `pocketfft`) and the `portable`
+FIR backend, then runs the full correctness suite. To select a different
+backend, set `FFT_BACKEND` / `FIR_BACKEND` at configure time — see
+[Backends](backends.md).
 
 ## FFT usage
 

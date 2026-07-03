@@ -166,7 +166,7 @@ components:
     source: https://bitbucket.org/jpommier/pffft
     used_by: backend (portable, candidate)
     production: true
-    notes: Constrained power-of-two 1D. Candidate only; current portable backend is in-tree.
+    notes: Constrained power-of-two 1D. Candidate only; pocketfft is the chosen portable/broad-length FFT backend.
 
   - name: PocketFFT
     version: cpp @ c90e55b3d529f8efa40ed01a20de22405f45fc65
@@ -179,8 +179,9 @@ components:
     used_by: backend (pocketfft)
     production: true
     notes: >
-      Portable C++ header-only FFT, the redistributable broad-length backend for
-      every host (x86 + Arm), complementing the in-tree portable backend. Uses the
+      Portable C++ header-only FFT, the portable/redistributable broad-length
+      FFT backend for every host (x86 + Arm) and the `auto` fallback where no
+      vendor backend applies. Uses the
       public stride-based c2c/r2c/c2r API; complex, real-to-complex, and
       complex-to-real of any length in f32/f64, batched. The contract's 1/N is
       applied on inverse/c2r via pocketfft's output-scale (fct) argument. Built

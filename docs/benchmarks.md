@@ -49,5 +49,5 @@ The interactive dashboard above is generated from those same JSON files by
 
 !!! tip "Fair comparison (ISA)"
     KFR defaults to a conservative `sse2` baseline. Raise it (and match the
-    portable side) for a meaningful comparison:
+    pocketfft side) for a meaningful comparison:
     `cmake -DKFR_ARCH=avx2 build-bench`.

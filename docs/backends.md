@@ -8,7 +8,6 @@ unchanged.
 
 | Backend | Flag | Status | Notes |
 |---------|------|--------|-------|
-| **portable** | `-DFFT_BACKEND=portable` | ✅ implemented | In-tree. Radix-2 for powers of two, Bluestein otherwise. Complex, R2C, C2R in f32/f64, batched. No dependencies. |
 | **PocketFFT** | `-DFFT_BACKEND=pocketfft` | ✅ implemented | Header-only C++ PocketFFT (BSD-3-Clause). Portable + redistributable on **every** host (x86 + Arm). Complex, R2C, C2R any length in f32/f64, batched. Fetched (one pinned, hash-checked header) by `cmake/FetchPocketFFT.cmake`; plan creation pre-warms pocketfft's plan cache. |
 | **Intel oneMKL** | `-DFFT_BACKEND=mkl` | ✅ implemented | DFTI descriptors; R2C uses CCE storage (`N/2+1` bins). Fetched on demand via `cmake/FetchMKL.cmake` (Intel PyPI wheels, no system install). |
 | **AMD AOCL-FFTZ** | `-DFFT_BACKEND=aocl` | ✅ implemented | AMD's "Zen" FFT, built from source by `cmake/FetchAOCL.cmake`. Complex any length; real excludes 7-non-smooth lengths (reports `UnsupportedLength`). |
@@ -19,7 +18,7 @@ unchanged.
 | **Apple vDSP** | `-DFFT_BACKEND=vdsp` | 🚧 scaffolded | Compile-error stub until implemented. |
 
 `FFT_BACKEND=auto` (the default) resolves to `vdsp` on Apple, `armpl` on Arm,
-`aocl` on x86, else `portable`. On Arm, `-DFFT_BACKEND=cmsis` selects the
+`aocl` on x86, else `pocketfft`. On Arm, `-DFFT_BACKEND=cmsis` selects the
 dependency-free, download-free portable/NEON path instead of fetching ArmPL.
 
 ## FIR backends
@@ -39,10 +38,10 @@ Unsupported precision/configurations are reported at plan creation via
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `FFT_BACKEND` | `auto` | `auto·vdsp·cmsis·mkl·aocl·armpl·pocketfft·portable`. `auto` resolves per platform (see above). |
+| `FFT_BACKEND` | `auto` | `auto·vdsp·cmsis·mkl·aocl·armpl·pocketfft`. `auto` resolves per platform (see above). |
 | `FIR_BACKEND` | `portable` | `portable·liquid·ipp·cmsis`. |
 | `FFT_BUILD_TESTS` | `ON` | Build the correctness tests. |
-| `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark. Always builds `*_bench_portable`. |
+| `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark. Always builds `fft_bench_pocketfft` and `fir_bench_portable`. |
 | `FFT_ENABLE_KFR_BENCHMARK` | `OFF` | Also build `fft_bench_kfr`. Requires benchmarks; forbidden when `FFT_PACKAGING=ON`. |
 | `FFT_ENABLE_MKL_BENCHMARK` | `OFF` | Also build `fft_bench_mkl`. |
 | `FFT_ENABLE_AOCL_BENCHMARK` | `OFF` | Also build `fft_bench_aocl`. |

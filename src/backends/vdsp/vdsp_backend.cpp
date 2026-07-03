@@ -4,7 +4,7 @@
 // the public interleaved layout, handle its packed real-FFT output (the DC and
 // Nyquist real terms packed into one complex slot), apply vDSP's 2x real-FFT
 // scaling, and reuse a single committed setup across execute calls.
-#error "vdsp backend is not implemented yet. Build with -DFFT_BACKEND=portable."
+#error "vdsp backend is not implemented yet. Build with -DFFT_BACKEND=pocketfft."
 
 #include "common/backend.h"
 

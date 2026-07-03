@@ -90,7 +90,7 @@ public:
     std::size_t workspace_bytes() const { return workspace_bytes_; }
 
     // Stable identifier of the backend that produced this plan, e.g.
-    // "portable", "vdsp", "mkl". Useful for diagnostics.
+    // "pocketfft", "vdsp", "mkl". Useful for diagnostics.
     const char* backend_name() const { return backend_name_; }
 
     FftPlan(FftPlan&&) noexcept = default;

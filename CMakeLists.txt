@@ -33,9 +33,9 @@ endif()
 # Options (Phase 4: build and licensing controls)
 # ---------------------------------------------------------------------------
 set(FFT_BACKEND "auto" CACHE STRING
-    "FFT backend: auto|vdsp|cmsis|mkl|aocl|armpl|pocketfft|portable")
+    "FFT backend: auto|vdsp|cmsis|mkl|aocl|armpl|pocketfft")
 set_property(CACHE FFT_BACKEND PROPERTY STRINGS
-    auto vdsp cmsis mkl aocl armpl pocketfft portable)
+    auto vdsp cmsis mkl aocl armpl pocketfft)
 
 set(FIR_BACKEND "portable" CACHE STRING
     "FIR backend: portable|liquid|ipp|cmsis")
@@ -88,15 +88,16 @@ endif()
 #
 # The table is deliberately STATIC (host-independent) so one configure on any
 # machine yields both the x86 and Arm lists. Compatibility rules:
-#   - portable / cmsis / liquid : portable C, buildable and tested on every arch.
-#   - pocketfft                 : portable C++ (BSD-3-Clause), every arch.
+#   - cmsis / liquid : portable C, buildable and tested on every arch.
+#   - pocketfft      : portable C++ (BSD-3-Clause), the in-tree portable path on
+#                      every arch (fetched header-only; see FetchPocketFFT.cmake).
 #   - mkl / aocl / ipp          : x86-only vendor libraries.
 #   - armpl                     : AArch64-only vendor library (fetched by
 #                                 cmake/FetchArmPL.cmake), so Arm-tested only.
 #   - vdsp                      : Apple-only AND still a compile-error stub, so it
 #                                 is intentionally omitted from the tested set.
-set(_fft_backends_x86 portable cmsis pocketfft mkl aocl)
-set(_fft_backends_arm portable cmsis pocketfft armpl)
+set(_fft_backends_x86 cmsis pocketfft mkl aocl)
+set(_fft_backends_arm cmsis pocketfft armpl)
 set(_fir_backends_x86 portable cmsis liquid ipp)
 set(_fir_backends_arm portable cmsis liquid)
 
@@ -226,15 +227,16 @@ if(_resolved_backend STREQUAL "auto")
         # cmake/FetchAOCL.cmake), so it is the default on x86.
         set(_resolved_backend "aocl")
     else()
-        # Fallback for architectures without a vendor backend. The portable
-        # backend is always implemented, so every platform stays buildable.
-        set(_resolved_backend "portable")
+        # Fallback for architectures without a vendor backend. PocketFFT is a
+        # portable C++ header (BSD-3-Clause) that builds on every arch, so every
+        # platform stays buildable. (Fetched on demand by FetchPocketFFT.cmake.)
+        set(_resolved_backend "pocketfft")
     endif()
 endif()
 
 # Configure-time build audit: selected library backend plus the optional
 # benchmark backends that are compatible with this host.
-set(_compat_list "portable")
+set(_compat_list "")
 if(_compat_kfr)
     list(APPEND _compat_list "kfr")
 endif()
@@ -269,9 +271,7 @@ message(STATUS "dsp-dispatch host: ${CMAKE_SYSTEM_PROCESSOR} | "
     "compatible benchmark backends: ${_compat_str}")
 
 set(_backend_sources "")
-if(_resolved_backend STREQUAL "portable")
-    list(APPEND _backend_sources src/backends/portable/portable_backend.cpp)
-elseif(_resolved_backend STREQUAL "vdsp")
+if(_resolved_backend STREQUAL "vdsp")
     list(APPEND _backend_sources src/backends/vdsp/vdsp_backend.cpp)
 elseif(_resolved_backend STREQUAL "cmsis")
     list(APPEND _backend_sources src/backends/cmsis/cmsis_backend.cpp)

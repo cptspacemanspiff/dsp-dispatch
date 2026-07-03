@@ -31,7 +31,7 @@ a rewrite.
 
 | Domain | Backends |
 |--------|----------|
-| **FFT** | portable (in-tree), Intel oneMKL, AMD AOCL-FFTZ, CMSIS-DSP, KFR *(bench-only)* |
+| **FFT** | PocketFFT (portable, in every build), Intel oneMKL, AMD AOCL-FFTZ, CMSIS-DSP, KFR *(bench-only)* |
 | **FIR** | portable (in-tree), liquid-dsp, Intel IPP, CMSIS-DSP, KFR *(bench-only)* |
 
 See [Backends](backends.md) for the full support matrix and build flags.
