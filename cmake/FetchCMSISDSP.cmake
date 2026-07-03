@@ -1,10 +1,8 @@
 # FetchCMSISDSP.cmake
 #
 # Fetch Arm's CMSIS-DSP and expose its static library as CMSISDSP::CMSISDSP for
-# the FIR backend. CMSIS-DSP is portable C: it builds a scalar kernel for a host
-# CPU (x86_64 lands here via HOST=ON) and a NEON-accelerated kernel on AArch64
-# (NEON=ON). Both paths implement the same arm_fir_* API the backend uses, so a
-# single backend source compiles for x86 and Arm.
+# the FFT and FIR backends. CMSIS-DSP is portable C; a single backend source
+# compiles for x86 and Arm against the same arm_cfft_*/arm_rfft_*/arm_fir_* API.
 
 include_guard(GLOBAL)
 
@@ -14,14 +12,29 @@ endif()
 
 set(CMSISDSP_GIT_TAG "v1.17.0" CACHE STRING "CMSIS-DSP git tag to fetch")
 
-# CMSIS-DSP reads these as its own CMake options; they must be set before
-# FetchContent_MakeAvailable so its configure step picks them up.
-#   HOST=ON  -> portable scalar build for a host CPU (used on x86_64).
-#   NEON=ON  -> Arm NEON acceleration on AArch64.
-#   DISABLEFLOAT16=ON -> skip float16 kernels; they need _Float16 support that
-#                        host toolchains frequently lack, and the FIR backend
-#                        never touches them.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|armv8|armv7")
+# CMSIS-DSP build options. These must be set before FetchContent_MakeAvailable
+# so its configure step picks them up.
+#
+# HOST=ON builds the portable scalar kernels and (crucially) defines
+# __GNUC_PYTHON__, which makes arm_math_types.h skip its `#include
+# "cmsis_compiler.h"` -- that header lives in CMSIS-Core, a *separate* repo. So
+# HOST=ON is dependency-free and builds on any CPU. It is arch-independent: on
+# aarch64 the compiler still auto-vectorizes these C kernels to NEON at -O3
+# (NEON is baseline on armv8-a), so we get SIMD without pulling CMSIS-Core.
+#
+# CMSIS-DSP's hand-written NEON *intrinsic* kernels (NEON=ON) additionally
+# require CMSIS-Core headers. To opt in, set -DCMSISDSP_USE_NEON=ON together with
+# -DCMSISCORE=<path to a CMSIS/Core checkout that provides cmsis_compiler.h>.
+#
+# DISABLEFLOAT16=ON skips float16 kernels; they need _Float16 support that host
+# toolchains frequently lack, and neither backend touches them.
+option(CMSISDSP_USE_NEON "Use CMSIS-DSP's NEON intrinsic kernels (requires CMSISCORE)" OFF)
+if(CMSISDSP_USE_NEON)
+    if(NOT DEFINED CMSISCORE)
+        message(FATAL_ERROR
+            "CMSISDSP_USE_NEON=ON requires -DCMSISCORE=<path to CMSIS Core> so "
+            "CMSIS-DSP can find cmsis_compiler.h.")
+    endif()
     set(NEON ON CACHE BOOL "" FORCE)
     set(HOST OFF CACHE BOOL "" FORCE)
 else()
@@ -47,8 +60,8 @@ if(NOT TARGET CMSISDSP::CMSISDSP)
     endif()
 endif()
 
-if(HOST)
-    message(STATUS "CMSIS-DSP: host/scalar build (${CMSISDSP_GIT_TAG})")
+if(NEON)
+    message(STATUS "CMSIS-DSP: NEON-intrinsic build (${CMSISDSP_GIT_TAG})")
 else()
-    message(STATUS "CMSIS-DSP: NEON build (${CMSISDSP_GIT_TAG})")
+    message(STATUS "CMSIS-DSP: portable/host build, compiler auto-vectorized (${CMSISDSP_GIT_TAG})")
 endif()

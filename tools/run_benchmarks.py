@@ -25,9 +25,46 @@ import csv
 import glob
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
+
+
+def cpu_model() -> str:
+    """Best-effort CPU brand string.
+
+    Google Benchmark's JSON context records num_cpus/mhz/host_name but not the
+    CPU model, so we detect it here. run_benchmarks.py runs the executables
+    locally, so the local CPU is the machine the numbers came from. Works on x86
+    and Arm Linux (the CI runners) plus macOS.
+    """
+    # Linux: lscpu exposes "Model name" on both x86 and Arm.
+    try:
+        out = subprocess.run(["lscpu"], capture_output=True, text=True,
+                             check=False).stdout
+        for line in out.splitlines():
+            if line.strip().lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    # Linux fallback: x86 exposes "model name" in /proc/cpuinfo (Arm usually not).
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.lower().startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    # macOS.
+    try:
+        out = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                             capture_output=True, text=True, check=False).stdout.strip()
+        if out:
+            return out
+    except OSError:
+        pass
+    return platform.processor() or platform.machine() or "unknown"
 
 
 def discover_backends(bench_dir: Path, suite: str) -> list[tuple[str, Path]]:
@@ -374,23 +411,28 @@ def main() -> int:
 
     md, csv_rows = build_tables(per_backend, args.baseline)
 
+    cpu = cpu_model()
+    arch = platform.machine()
+
     # Human-readable to stdout.
     print()
+    print(f"# cpu={cpu} ({arch})")
     if context:
-        cpu = context.get("host_name", "?")
         mhz = context.get("mhz_per_cpu", "?")
         ncpu = context.get("num_cpus", "?")
-        print(f"# host={cpu}  cpus={ncpu}  mhz={mhz}")
+        print(f"# host={context.get('host_name','?')}  cpus={ncpu}  mhz={mhz}")
     print(md)
     print()
 
     # Markdown file.
     header = "# dsp-dispatch benchmark results\n\n"
+    header += f"- cpu: `{cpu}` ({arch})\n"
     if context:
         header += (f"- host: `{context.get('host_name','?')}`  "
                    f"cpus: {context.get('num_cpus','?')}  "
                    f"mhz: {context.get('mhz_per_cpu','?')}\n"
-                   f"- build: {context.get('library_build_type','?')}\n\n")
+                   f"- build: {context.get('library_build_type','?')}\n")
+    header += "\n"
     results_md = args.out_dir / f"{args.suite}_results.md"
     results_md.write_text(header + md + "\n")
     print(f"[write] {results_md}")

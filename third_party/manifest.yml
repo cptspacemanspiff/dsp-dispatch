@@ -50,8 +50,10 @@ components:
     notes: >
       FFT backend (arm_cfft_f32 complex, arm_rfft_fast_f32 real) and real
       single-rate FIR backend (arm_fir_f32/f64). Portable C: fetched via
-      cmake/FetchCMSISDSP.cmake and built as a scalar host kernel on x86_64
-      (HOST=ON) or a NEON kernel on AArch64 (NEON=ON). FFT is float32 only and
+      cmake/FetchCMSISDSP.cmake and built with HOST=ON (portable scalar kernels,
+      dependency-free; the compiler auto-vectorizes to NEON at -O3 on armv8-a).
+      CMSIS's hand-written NEON-intrinsic kernels need CMSIS-Core headers and are
+      opt-in via -DCMSISDSP_USE_NEON=ON -DCMSISCORE=<path>. FFT is float32 only and
       limited to CMSIS's power-of-two radix tables (complex 16..4096, real
       32..4096); other lengths/precisions report UnsupportedLength/Config. The FIR
       side has no complex kernel (complex configs report UnsupportedConfig), takes

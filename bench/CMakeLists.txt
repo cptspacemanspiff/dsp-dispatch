@@ -78,7 +78,7 @@ if(FIR_ENABLE_CMSIS_BENCHMARK)
     fir_add_bench_backend(cmsis
         ${PROJECT_SOURCE_DIR}/src/backends/cmsis/cmsis_fir_backend.cpp
         CMSISDSP::CMSISDSP)
-    message(STATUS "CMSIS-DSP FIR benchmark backend enabled (fetched; scalar on x86, NEON on Arm).")
+    message(STATUS "CMSIS-DSP FIR benchmark backend enabled (fetched; portable/host, compiler auto-vectorizes to NEON on Arm).")
 endif()
 
 # KFR: benchmark-only, fetched on demand. Lives entirely under bench/.
@@ -140,11 +140,11 @@ if(FFT_ENABLE_AOCL_BENCHMARK)
 endif()
 
 # Arm CMSIS-DSP: production-capable FFT backend, fetched. Uses the same backend
-# source as the production build (scalar on x86, NEON on Arm).
+# source as the production build (portable/host, compiler auto-vectorizes to NEON on Arm).
 if(FFT_ENABLE_CMSIS_BENCHMARK)
     include(FetchCMSISDSP)
     fft_add_bench_backend(cmsis
         ${PROJECT_SOURCE_DIR}/src/backends/cmsis/cmsis_backend.cpp
         CMSISDSP::CMSISDSP)
-    message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; scalar on x86, NEON on Arm).")
+    message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; portable/host, compiler auto-vectorizes to NEON on Arm).")
 endif()

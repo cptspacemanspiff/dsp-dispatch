@@ -91,8 +91,10 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Correctness (Arm/aarch64): the ARM-native backends. CMSIS builds with NEON
-  # here (HOST/scalar on x86, NEON on aarch64 is selected by FetchCMSISDSP).
+  # Correctness (Arm/aarch64): the ARM-native backends. CMSIS uses the portable
+  # host build here (dependency-free; the compiler auto-vectorizes to NEON at -O3
+  # on armv8-a). CMSIS's hand-written NEON-intrinsic kernels need CMSIS-Core and
+  # are opt-in via -DCMSISDSP_USE_NEON=ON -DCMSISCORE=<path>.
   #
   # Uses a GitHub-hosted Arm64 Linux runner (free for public repos; Team/
   # Enterprise plans for private). If unavailable, swap to a QEMU cross build
