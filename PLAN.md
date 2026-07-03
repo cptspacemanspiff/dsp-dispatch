@@ -88,6 +88,7 @@ src/backends/cmsis/
 src/backends/mkl/
 src/backends/aocl/
 src/backends/armpl/
+src/backends/pocketfft/
 src/backends/portable/
 bench/backends/kfr/
 tests/
@@ -118,16 +119,19 @@ Backend notes:
 - ArmPL: consume the FFTW3 interface (plan once, new-array execute on caller
   buffers); fetch the GCC/gfortran-ABI static build (links under GCC and vanilla
   Clang); apply the contract's 1/N on inverse/c2r since ArmPL is unscaled.
-- Portable fallback: choose only after representative benchmarking. Candidates
-  include PFFFT for constrained power-of-two 1D workloads and PocketFFT for
-  broader length support.
+- PocketFFT: integrated as a portable, redistributable backend (header-only C++,
+  BSD-3-Clause) for every host; uses the public stride-based c2c/r2c/c2r API and
+  applies the contract's 1/N on inverse/c2r via pocketfft's output-scale argument.
+- Portable fallback: choose only after representative benchmarking. Remaining
+  candidate is PFFFT for constrained power-of-two 1D workloads; PocketFFT (broad
+  length support) is already integrated as its own backend above.
 
 ## Phase 4: Build and licensing controls
 
 Add explicit CMake options:
 
 ```text
-FFT_BACKEND=auto|vdsp|cmsis|mkl|aocl|armpl|portable
+FFT_BACKEND=auto|vdsp|cmsis|mkl|aocl|armpl|pocketfft|portable
 FFT_ENABLE_BENCHMARKS=OFF
 FFT_ENABLE_KFR_BENCHMARK=OFF
 ```

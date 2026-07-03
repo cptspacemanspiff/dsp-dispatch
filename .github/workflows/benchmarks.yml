@@ -91,6 +91,7 @@ jobs:
           path: |
             build/_deps
             build/_mkl
+            build/_pocketfft
           key: deps-${{ github.event.repository.name }}-${{ runner.os }}-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-${{ runner.os }}-${{ matrix.backend }}-
 
@@ -186,6 +187,7 @@ jobs:
           path: |
             build/_deps
             build/_armpl
+            build/_pocketfft
           key: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-
 

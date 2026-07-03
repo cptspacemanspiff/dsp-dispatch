@@ -168,10 +168,24 @@ components:
     production: true
     notes: Constrained power-of-two 1D. Candidate only; current portable backend is in-tree.
 
-  - name: PocketFFT (candidate)
-    version: TBD
+  - name: PocketFFT
+    version: cpp @ c90e55b3d529f8efa40ed01a20de22405f45fc65
     license: BSD-3-Clause
-    source: https://github.com/mreineck/pocketfft
-    used_by: backend (portable, candidate)
+    source: >
+      Single header pocketfft_hdronly.h, fetched by cmake/FetchPocketFFT.cmake
+      from a pinned, SHA256-verified raw.githubusercontent.com commit URL
+      (https://github.com/mreineck/pocketfft, cpp branch). No git checkout and
+      none of PocketFFT's own CMake/Python tooling is pulled in.
+    used_by: backend (pocketfft)
     production: true
-    notes: Broader length support. Candidate only; current portable backend is in-tree.
+    notes: >
+      Portable C++ header-only FFT, the redistributable broad-length backend for
+      every host (x86 + Arm), complementing the in-tree portable backend. Uses the
+      public stride-based c2c/r2c/c2r API; complex, real-to-complex, and
+      complex-to-real of any length in f32/f64, batched. The contract's 1/N is
+      applied on inverse/c2r via pocketfft's output-scale (fct) argument. Built
+      single-threaded (POCKETFFT_NO_MULTITHREADING); POCKETFFT_CACHE_SIZE enables
+      pocketfft's length-keyed plan cache, which plan creation pre-warms so
+      execute reuses the committed plan (pocketfft still allocates its own small
+      transform scratch per call). Permissively licensed; copy only the header and
+      its license text for a packaged pocketfft build.

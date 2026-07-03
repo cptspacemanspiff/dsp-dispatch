@@ -33,9 +33,9 @@ endif()
 # Options (Phase 4: build and licensing controls)
 # ---------------------------------------------------------------------------
 set(FFT_BACKEND "auto" CACHE STRING
-    "FFT backend: auto|vdsp|cmsis|mkl|aocl|armpl|portable")
+    "FFT backend: auto|vdsp|cmsis|mkl|aocl|armpl|pocketfft|portable")
 set_property(CACHE FFT_BACKEND PROPERTY STRINGS
-    auto vdsp cmsis mkl aocl armpl portable)
+    auto vdsp cmsis mkl aocl armpl pocketfft portable)
 
 set(FIR_BACKEND "portable" CACHE STRING
     "FIR backend: portable|liquid|ipp|cmsis")
@@ -47,6 +47,7 @@ option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
 option(FFT_ENABLE_ARMPL_BENCHMARK "Build the Arm Performance Libraries benchmark backend (fetched)" OFF)
+option(FFT_ENABLE_POCKETFFT_BENCHMARK "Build the PocketFFT benchmark backend (fetched header)" OFF)
 option(FFT_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FFT benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_FFTW_BENCHMARK "Build the FFTW FFT benchmark backend (fetched; benchmark-only, GPL)" OFF)
 option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (fetched)" OFF)
@@ -88,13 +89,14 @@ endif()
 # The table is deliberately STATIC (host-independent) so one configure on any
 # machine yields both the x86 and Arm lists. Compatibility rules:
 #   - portable / cmsis / liquid : portable C, buildable and tested on every arch.
+#   - pocketfft                 : portable C++ (BSD-3-Clause), every arch.
 #   - mkl / aocl / ipp          : x86-only vendor libraries.
 #   - armpl                     : AArch64-only vendor library (fetched by
 #                                 cmake/FetchArmPL.cmake), so Arm-tested only.
 #   - vdsp                      : Apple-only AND still a compile-error stub, so it
 #                                 is intentionally omitted from the tested set.
-set(_fft_backends_x86 portable cmsis mkl aocl)
-set(_fft_backends_arm portable cmsis armpl)
+set(_fft_backends_x86 portable cmsis pocketfft mkl aocl)
+set(_fft_backends_arm portable cmsis pocketfft armpl)
 set(_fir_backends_x86 portable cmsis liquid ipp)
 set(_fir_backends_arm portable cmsis liquid)
 
@@ -130,11 +132,14 @@ file(WRITE "${CMAKE_BINARY_DIR}/testable_backends.json"
 #   - ArmPL:      Arm AArch64 vendor library, Arm only (fetched deb, no root).
 #   - liquid-dsp: portable C, every host.
 #   - FFTW:       portable C (SSE2/AVX/AVX2 on x86, NEON on Arm), every host.
+#   - PocketFFT:  portable C++ (BSD-3-Clause header), every host.
 set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
 set(_compat_ipp FALSE)
 set(_compat_armpl FALSE)
+# PocketFFT is a portable C++ header, compatible with every host we target.
+set(_compat_pocketfft TRUE)
 # CMSIS-DSP, liquid-dsp and FFTW are portable C (scalar/SIMD host build on x86,
 # NEON on Arm), so they are compatible with every host we target.
 set(_compat_cmsis TRUE)
@@ -192,6 +197,9 @@ if(FFT_ENABLE_ALL_BENCHMARKS OR DSP_ENABLE_ALL_BENCHMARKS)
     if(_compat_armpl)
         set(FFT_ENABLE_ARMPL_BENCHMARK ON)
     endif()
+    if(_compat_pocketfft)
+        set(FFT_ENABLE_POCKETFFT_BENCHMARK ON)
+    endif()
 endif()
 # liquid-dsp is a FIR-only backend and was never part of the FFT-era switch, so
 # only the DSP-wide umbrella enables it (keeps FFT_ENABLE_ALL_BENCHMARKS's
@@ -239,6 +247,9 @@ endif()
 if(_compat_armpl)
     list(APPEND _compat_list "armpl")
 endif()
+if(_compat_pocketfft)
+    list(APPEND _compat_list "pocketfft")
+endif()
 if(_compat_ipp)
     list(APPEND _compat_list "ipp")
 endif()
@@ -270,6 +281,8 @@ elseif(_resolved_backend STREQUAL "aocl")
     list(APPEND _backend_sources src/backends/aocl/aocl_backend.cpp)
 elseif(_resolved_backend STREQUAL "armpl")
     list(APPEND _backend_sources src/backends/armpl/armpl_backend.cpp)
+elseif(_resolved_backend STREQUAL "pocketfft")
+    list(APPEND _backend_sources src/backends/pocketfft/pocketfft_backend.cpp)
 else()
     message(FATAL_ERROR "Unknown FFT_BACKEND: ${FFT_BACKEND}")
 endif()
@@ -320,6 +333,12 @@ endif()
 if(_resolved_backend STREQUAL "armpl")
     include(FetchArmPL)
     target_link_libraries(dsp_dispatch PRIVATE ArmPL::ArmPL)
+endif()
+
+# The PocketFFT backend needs the fetched header-only PocketFFT (portable C++).
+if(_resolved_backend STREQUAL "pocketfft")
+    include(FetchPocketFFT)
+    target_link_libraries(dsp_dispatch PRIVATE PocketFFT::PocketFFT)
 endif()
 
 # The CMSIS FFT backend needs CMSIS-DSP (scalar on x86, NEON on Arm).
@@ -435,6 +454,10 @@ endif()
 
 if(FFT_ENABLE_ARMPL_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
     message(FATAL_ERROR "FFT_ENABLE_ARMPL_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+endif()
+
+if(FFT_ENABLE_POCKETFFT_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FFT_ENABLE_POCKETFFT_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
 endif()
 
 # ---------------------------------------------------------------------------

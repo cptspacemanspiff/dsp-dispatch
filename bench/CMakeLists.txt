@@ -165,6 +165,16 @@ if(FFT_ENABLE_ARMPL_BENCHMARK)
     message(STATUS "ArmPL benchmark backend enabled (fetched Arm Performance Libraries).")
 endif()
 
+# PocketFFT: production-capable portable C++ FFT backend, fetched (header-only).
+# Uses the same backend source as the production build (src/backends/pocketfft).
+if(FFT_ENABLE_POCKETFFT_BENCHMARK)
+    include(FetchPocketFFT)
+    fft_add_bench_backend(pocketfft
+        ${PROJECT_SOURCE_DIR}/src/backends/pocketfft/pocketfft_backend.cpp
+        PocketFFT::PocketFFT)
+    message(STATUS "PocketFFT benchmark backend enabled (fetched header-only).")
+endif()
+
 # FFTW: benchmark-only (GPL), fetched and built from source. Single precision
 # (fftw3f), complex f32 -- the standard c2c benchmark. Works on x86 and Arm.
 # Lives entirely under bench/ and is never linked into the library or installed.

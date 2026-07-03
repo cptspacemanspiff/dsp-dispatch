@@ -48,6 +48,13 @@ Implemented and tested here:
   (downloads Arm's `deb_gcc` tarball and extracts the static library + headers
   from its `.deb` payload — no root and no system install). The GCC/gfortran-ABI
   build links cleanly under both GCC and vanilla Clang. Passes the full suite.
+- **PocketFFT backend** (`src/backends/pocketfft/`): the header-only C++
+  PocketFFT (BSD-3-Clause). A single portable, redistributable backend for
+  **every** host (x86 + Arm), not tied to a CPU vendor. Complex, real-to-complex,
+  and complex-to-real of any length in f32/f64, batched, via pocketfft's
+  stride-based `c2c`/`r2c`/`c2r`. Fetched (one pinned, hash-checked header) by
+  `cmake/FetchPocketFFT.cmake`; plan creation pre-warms pocketfft's length-keyed
+  plan cache. Passes the full suite.
 - **FIR backends**: an in-tree portable direct FIR backend, optional
   **liquid-dsp** (`-DFIR_BACKEND=liquid`), and optional **Intel IPP**
   (`-DFIR_BACKEND=ipp`). liquid-dsp is fetched by `cmake/FetchLiquidDSP.cmake`;
@@ -72,8 +79,9 @@ ctest --test-dir build --output-on-failure
 `.github/workflows/benchmarks.yml` runs on push/PR (and manual dispatch):
 
 - **backend-tests** — builds the production library with each backend in the
-  per-arch matrix (x86: `portable`, `cmsis`, `mkl`, `aocl`; Arm: `portable`,
-  `cmsis`, `armpl`) and runs the full test suite against it.
+  per-arch matrix (x86: `portable`, `cmsis`, `pocketfft`, `mkl`, `aocl`; Arm:
+  `portable`, `cmsis`, `pocketfft`, `armpl`) and runs the full test suite
+  against it.
 - **benchmarks** — builds every `fft_bench_*`, runs `tools/run_benchmarks.py`,
   posts the results table to the run summary, and uploads `bench_results/`
   (tables, CSV, graph, JSON) as an artifact.
@@ -86,7 +94,7 @@ not their relative performance. Run on dedicated hardware for real numbers.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|armpl\|portable`. `auto` resolves to `vdsp` on Apple, `armpl` on Arm, `aocl` on x86, else `portable`. `portable`, `mkl`, `aocl`, `armpl`, and `cmsis` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`; `armpl` fetches Arm Performance Libraries via `cmake/FetchArmPL.cmake`). Use `-DFFT_BACKEND=cmsis` on Arm for the download-free portable/NEON path. |
+| `FFT_BACKEND` | `auto` | `auto\|vdsp\|cmsis\|mkl\|aocl\|armpl\|pocketfft\|portable`. `auto` resolves to `vdsp` on Apple, `armpl` on Arm, `aocl` on x86, else `portable`. `portable`, `mkl`, `aocl`, `armpl`, `pocketfft`, and `cmsis` are implemented (`mkl` fetches oneMKL via `cmake/FetchMKL.cmake`; `aocl` builds AOCL-FFTZ via `cmake/FetchAOCL.cmake`; `armpl` fetches Arm Performance Libraries via `cmake/FetchArmPL.cmake`; `pocketfft` fetches the PocketFFT header via `cmake/FetchPocketFFT.cmake`). `pocketfft` is a portable, redistributable backend on any host; `-DFFT_BACKEND=cmsis` on Arm is the download-free NEON path. |
 | `FIR_BACKEND` | `portable` | `portable\|liquid\|ipp`. `portable` is the in-tree direct FIR backend. `liquid` fetches and links liquid-dsp. `ipp` uses Intel IPP from an installed package or from `ipp-devel` + `ipp-static` wheels installed with `uv`. |
 | `FFT_BUILD_TESTS` | `ON` | Build the correctness tests. |
 | `FFT_ENABLE_BENCHMARKS` | `OFF` | Build per-backend benchmark executables on Google Benchmark (fetched if not installed). Always builds `fft_bench_portable`. |

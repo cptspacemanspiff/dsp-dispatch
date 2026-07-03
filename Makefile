@@ -7,8 +7,9 @@
 #
 # "All backends" is resolved by CMake's DSP_ENABLE_ALL_BENCHMARKS option, which
 # enables every FFT and FIR benchmark backend compatible with this host (x86:
-# portable, kfr, mkl, aocl, ipp, cmsis, liquid; Arm: portable, armpl, cmsis,
-# liquid, and kfr under Clang). No backend list is hardcoded here -- choosing backends
+# portable, pocketfft, kfr, mkl, aocl, ipp, cmsis, liquid; Arm: portable,
+# pocketfft, armpl, cmsis, liquid, and kfr under Clang). No backend list is
+# hardcoded here -- choosing backends
 # is CMake's job, so e.g. x86-only IPP is never fetched on an Arm host.
 #
 # Override any variable on the command line, e.g.:
