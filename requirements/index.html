@@ -628,7 +628,7 @@ workload before final backend decisions (Phase 7).</p>
 </tr>
 <tr>
 <td>Precision</td>
-<td><code>float32</code> first; <code>float64</code> supported by the portable backend, required elsewhere only if a product needs it</td>
+<td><code>float32</code> first; <code>float64</code> supported by the portable <code>pocketfft</code> FFT backend, required elsewhere only if a product needs it</td>
 </tr>
 <tr>
 <td>Dimensions</td>
@@ -636,7 +636,7 @@ workload before final backend decisions (Phase 7).</p>
 </tr>
 <tr>
 <td>Lengths</td>
-<td>Arbitrary <code>N &gt;= 1</code>. Powers of two are the fast path; other lengths use Bluestein in the portable backend <strong>(initial)</strong></td>
+<td>Arbitrary <code>N &gt;= 1</code>. Powers of two are the fast path; other lengths are handled (Bluestein) by the portable <code>pocketfft</code> FFT backend <strong>(initial)</strong></td>
 </tr>
 <tr>
 <td>Batch</td>
@@ -692,7 +692,8 @@ final selection.</p>
   transforms versus the double-precision reference DFT; round-trip error below
   <code>1e-4</code>. Tighten for <code>float64</code>.</li>
 <li><strong>Backend retention (Phase 7):</strong> a vendor backend is kept only if it improves
-  the primary workload by at least <strong>15%</strong> over the portable fallback, in
+  the primary workload by at least <strong>15%</strong> over the portable <code>pocketfft</code>
+  fallback, in
   addition to passing correctness, meeting redistribution terms, supporting all
   required shapes, and meeting binary-size/init constraints.</li>
 </ul>

@@ -594,9 +594,11 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>ctest<span class="w"> </span>--test-dir<span class="w"> </span>build<span class="w"> </span>--output-on-failure
 </code></pre></div>
-<p>By default this builds the <code>portable</code> FFT and FIR backends and runs the full
-correctness suite. To select a different backend, set <code>FFT_BACKEND</code> /
-<code>FIR_BACKEND</code> at configure time — see <a href="../backends/">Backends</a>.</p>
+<p>By default this auto-selects the platform FFT backend (<code>FFT_BACKEND=auto</code>: the
+vendor library per platform, falling back to <code>pocketfft</code>) and the <code>portable</code>
+FIR backend, then runs the full correctness suite. To select a different
+backend, set <code>FFT_BACKEND</code> / <code>FIR_BACKEND</code> at configure time — see
+<a href="../backends/">Backends</a>.</p>
 <h2 id="fft-usage">FFT usage<a class="headerlink" href="#fft-usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;fft/fft.h&quot;</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>

@@ -582,10 +582,10 @@ unchanged.</p>
 </thead>
 <tbody>
 <tr>
-<td><strong>portable</strong></td>
-<td><code>-DFFT_BACKEND=portable</code></td>
+<td><strong>PocketFFT</strong></td>
+<td><code>-DFFT_BACKEND=pocketfft</code></td>
 <td>✅ implemented</td>
-<td>In-tree. Radix-2 for powers of two, Bluestein otherwise. Complex, R2C, C2R in f32/f64, batched. No dependencies.</td>
+<td>Header-only C++ PocketFFT (BSD-3-Clause). Portable + redistributable on <strong>every</strong> host (x86 + Arm). Complex, R2C, C2R any length in f32/f64, batched. Fetched (one pinned, hash-checked header) by <code>cmake/FetchPocketFFT.cmake</code>; plan creation pre-warms pocketfft's plan cache.</td>
 </tr>
 <tr>
 <td><strong>Intel oneMKL</strong></td>
@@ -600,6 +600,12 @@ unchanged.</p>
 <td>AMD's "Zen" FFT, built from source by <code>cmake/FetchAOCL.cmake</code>. Complex any length; real excludes 7-non-smooth lengths (reports <code>UnsupportedLength</code>).</td>
 </tr>
 <tr>
+<td><strong>Arm Performance Libraries</strong></td>
+<td><code>-DFFT_BACKEND=armpl</code></td>
+<td>✅ implemented</td>
+<td>The AArch64 vendor library (Arm counterpart to oneMKL/AOCL). Implements the FFTW3 interface; complex, R2C, C2R in f32/f64, batched, any length. Fetched by <code>cmake/FetchArmPL.cmake</code> (downloads Arm's <code>deb_gcc</code> tarball, extracts <code>libarmpl_lp64.a</code> + headers from the <code>.deb</code> — no root). GCC/gfortran-ABI build links under GCC and vanilla Clang.</td>
+</tr>
+<tr>
 <td><strong>CMSIS-DSP</strong></td>
 <td><code>-DFFT_BACKEND=cmsis</code></td>
 <td>✅ implemented</td>
@@ -612,6 +618,12 @@ unchanged.</p>
 <td>Comparison baseline only — see the packaging note below.</td>
 </tr>
 <tr>
+<td><strong>FFTW</strong></td>
+<td><em>bench-only</em></td>
+<td>⚙️ benchmark</td>
+<td>Reference-FFT comparison baseline, x86 + Arm. Single-precision <code>fftw3f</code>, complex f32. GPL — same packaging rules as KFR.</td>
+</tr>
+<tr>
 <td><strong>Apple vDSP</strong></td>
 <td><code>-DFFT_BACKEND=vdsp</code></td>
 <td>🚧 scaffolded</td>
@@ -619,8 +631,9 @@ unchanged.</p>
 </tr>
 </tbody>
 </table>
-<p><code>FFT_BACKEND=auto</code> (the default) resolves to <code>vdsp</code> on Apple, <code>cmsis</code> on Arm,
-<code>aocl</code> on x86, else <code>portable</code>.</p>
+<p><code>FFT_BACKEND=auto</code> (the default) resolves to <code>vdsp</code> on Apple, <code>armpl</code> on Arm,
+<code>aocl</code> on x86, else <code>pocketfft</code>. On Arm, <code>-DFFT_BACKEND=cmsis</code> selects the
+dependency-free, download-free portable/NEON path instead of fetching ArmPL.</p>
 <h2 id="fir-backends">FIR backends<a class="headerlink" href="#fir-backends" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -679,7 +692,7 @@ unchanged.</p>
 <tr>
 <td><code>FFT_BACKEND</code></td>
 <td><code>auto</code></td>
-<td><code>auto·vdsp·cmsis·mkl·aocl·portable</code>. <code>auto</code> resolves per platform (see above).</td>
+<td><code>auto·vdsp·cmsis·mkl·aocl·armpl·pocketfft</code>. <code>auto</code> resolves per platform (see above).</td>
 </tr>
 <tr>
 <td><code>FIR_BACKEND</code></td>
@@ -694,7 +707,7 @@ unchanged.</p>
 <tr>
 <td><code>FFT_ENABLE_BENCHMARKS</code></td>
 <td><code>OFF</code></td>
-<td>Build per-backend benchmark executables on Google Benchmark. Always builds <code>*_bench_portable</code>.</td>
+<td>Build per-backend benchmark executables on Google Benchmark. Always builds <code>fft_bench_pocketfft</code> and <code>fir_bench_portable</code>.</td>
 </tr>
 <tr>
 <td><code>FFT_ENABLE_KFR_BENCHMARK</code></td>
@@ -712,9 +725,24 @@ unchanged.</p>
 <td>Also build <code>fft_bench_aocl</code>.</td>
 </tr>
 <tr>
+<td><code>FFT_ENABLE_ARMPL_BENCHMARK</code></td>
+<td><code>OFF</code></td>
+<td>Also build <code>fft_bench_armpl</code> (Arm only).</td>
+</tr>
+<tr>
+<td><code>FFT_ENABLE_POCKETFFT_BENCHMARK</code></td>
+<td><code>OFF</code></td>
+<td>Also build <code>fft_bench_pocketfft</code> (any host).</td>
+</tr>
+<tr>
 <td><code>FFT_ENABLE_CMSIS_BENCHMARK</code></td>
 <td><code>OFF</code></td>
 <td>Also build <code>fft_bench_cmsis</code>.</td>
+</tr>
+<tr>
+<td><code>FFT_ENABLE_FFTW_BENCHMARK</code></td>
+<td><code>OFF</code></td>
+<td>Also build <code>fft_bench_fftw</code> (x86 + Arm). Requires benchmarks; forbidden when <code>FFT_PACKAGING=ON</code>.</td>
 </tr>
 <tr>
 <td><code>FIR_ENABLE_LIQUID_BENCHMARK</code></td>
@@ -749,10 +777,11 @@ unchanged.</p>
 </tbody>
 </table>
 <div class="admonition warning">
-<p class="admonition-title">KFR is benchmark-only and must never be packaged</p>
-<p>KFR code lives only under <code>bench/</code>; the library never links it and the bench
-target has no install rule, so it can't enter a redistributable artifact.
-Setting <code>-DFFT_PACKAGING=ON</code> with KFR enabled is a hard configure error.</p>
+<p class="admonition-title">KFR and FFTW are benchmark-only and must never be packaged</p>
+<p>Both are GPL. Their code lives only under <code>bench/</code>; the library never links
+them and the bench target has no install rule, so they can't enter a
+redistributable artifact. Setting <code>-DFFT_PACKAGING=ON</code> with either enabled is
+a hard configure error.</p>
 </div>
 
 
