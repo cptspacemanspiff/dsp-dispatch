@@ -49,7 +49,22 @@ endif()
 FetchContent_Declare(fftw
     URL https://www.fftw.org/fftw-3.3.10.tar.gz
     URL_HASH SHA256=56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467)
+
+# FFTW 3.3.10 still ships `cmake_minimum_required(VERSION 2.8.12)`, which CMake
+# >= 4.0 rejects ("Compatibility with CMake < 3.5 has been removed"). Raise the
+# policy floor to 3.5 for FFTW's configure only, then restore, so this does not
+# leak into any other fetched subproject.
+if(DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+    set(_dsp_saved_policy_min "${CMAKE_POLICY_VERSION_MINIMUM}")
+endif()
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_MakeAvailable(fftw)
+if(DEFINED _dsp_saved_policy_min)
+    set(CMAKE_POLICY_VERSION_MINIMUM "${_dsp_saved_policy_min}")
+    unset(_dsp_saved_policy_min)
+else()
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
+endif()
 
 # FFTW's single-precision library target is fftw3f.
 if(TARGET fftw3f)
