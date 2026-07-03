@@ -139,6 +139,27 @@ def load_results(json_path: Path) -> tuple[str, dict, dict]:
     return label, rows, data.get("context", {})
 
 
+def annotate_cpu(json_path: Path, cpu: str, arch: str) -> None:
+    """Record the CPU model + arch into a benchmark JSON's ``context``.
+
+    Google Benchmark's JSON context carries host/cpus/mhz but not the CPU brand
+    string, so each raw result is otherwise anonymous. We inject it after the run
+    (when the local machine *is* the one that produced the numbers), making every
+    JSON self-describing — the dashboard and any downstream tooling read the CPU
+    straight from the JSON instead of a side file.
+    """
+    try:
+        data = json.loads(json_path.read_text())
+    except (OSError, json.JSONDecodeError) as e:  # pragma: no cover
+        print(f"[warn] could not annotate {json_path} with CPU: {e}",
+              file=sys.stderr)
+        return
+    ctx = data.setdefault("context", {})
+    ctx["cpu_model"] = cpu
+    ctx["cpu_arch"] = arch
+    json_path.write_text(json.dumps(data, indent=2))
+
+
 def fmt_table(headers: list[str], rows: list[list[str]]) -> str:
     widths = [len(h) for h in headers]
     for r in rows:
@@ -401,6 +422,11 @@ def main() -> int:
             return 1
         print(f"[info] backends: {', '.join(n for n, _ in backends)}")
         json_files = [run_backend(n, e, args.out_dir, args) for n, e in backends]
+        # Stamp the CPU into each freshly-produced JSON. Skipped under --no-run,
+        # where the local CPU may not be the one that produced the results.
+        run_cpu, run_arch = cpu_model(), platform.machine()
+        for jf in json_files:
+            annotate_cpu(jf, run_cpu, run_arch)
 
     per_backend: dict[str, dict] = {}
     context = {}
@@ -411,8 +437,10 @@ def main() -> int:
 
     md, csv_rows = build_tables(per_backend, args.baseline)
 
-    cpu = cpu_model()
-    arch = platform.machine()
+    # Prefer the CPU recorded in the JSON (from a prior run) so --no-run reports
+    # the machine that actually produced the numbers; fall back to the local CPU.
+    cpu = context.get("cpu_model") or cpu_model()
+    arch = context.get("cpu_arch") or platform.machine()
 
     # Human-readable to stdout.
     print()

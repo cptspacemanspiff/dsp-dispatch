@@ -1,0 +1,87 @@
+site_name: dsp-dispatch
+site_description: >-
+  A commercially distributable CPU FFT/FIR abstraction with one normalized
+  contract across backends.
+site_url: https://cptspacemanspiff.github.io/dsp-dispatch/
+repo_url: https://github.com/cptspacemanspiff/dsp-dispatch
+repo_name: cptspacemanspiff/dsp-dispatch
+edit_uri: edit/main/docs/
+copyright: dsp-dispatch
+
+theme:
+  name: material
+  icon:
+    logo: material/sine-wave
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Backends: backends.md
+  - Benchmarks: benchmarks.md
+  - Contract: requirements.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_css:
+  - assets/extra.css
+
+# Order matters: ECharts loads first, then the generated data (window.BENCH_DATA),
+# then the dashboard code that reads it. Material rewrites the local paths per
+# page and re-runs the scripts on instant navigation.
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js
+  - assets/bench-data.js
+  - assets/dashboard.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cptspacemanspiff/dsp-dispatch

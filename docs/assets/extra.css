@@ -1,0 +1,88 @@
+/* Benchmark dashboard styling — tuned to MkDocs Material tokens so it tracks
+   the active palette (light/slate) automatically. */
+
+.bench-dashboard {
+  margin: 1.2rem 0 1.6rem;
+}
+
+.bench-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.bench-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.15rem;
+  border-radius: 0.6rem;
+  background: var(--md-default-fg-color--lightest);
+}
+
+.bench-group[hidden] { display: none; }
+
+.bench-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.45rem;
+  color: var(--md-default-fg-color--light);
+  background: transparent;
+  transition: background-color 120ms, color 120ms;
+}
+
+.bench-btn:hover {
+  color: var(--md-default-fg-color);
+  background: var(--md-default-fg-color--lightest);
+}
+
+.bench-btn.is-active {
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+
+.bench-meta {
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+  min-height: 1em;
+  margin-bottom: 0.3rem;
+}
+
+.bench-meta strong { color: var(--md-default-fg-color); font-weight: 600; }
+
+.bench-chart {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.6rem;
+  padding: 0.3rem;
+}
+
+.bench-footnote {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.5rem;
+}
+
+.bench-footnote code { font-size: 0.9em; }
+
+.bench-empty {
+  padding: 1.2rem;
+  text-align: center;
+  color: var(--md-default-fg-color--light);
+  border: 1px dashed var(--md-default-fg-color--lighter);
+  border-radius: 0.6rem;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .bench-toolbar { gap: 0.5rem; }
+  .bench-btn { padding: 0.35rem 0.55rem; font-size: 0.68rem; }
+}

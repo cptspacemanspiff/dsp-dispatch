@@ -5,6 +5,11 @@ across backends. Application code never sees backend-specific layouts, packing,
 or scaling rules. See [`PLAN.md`](PLAN.md) for the full roadmap and
 [`docs/requirements.md`](docs/requirements.md) for the fixed contract.
 
+📖 **Documentation & live benchmark dashboard:**
+<https://cptspacemanspiff.github.io/dsp-dispatch/>
+(built from `docs/` with MkDocs Material; see [`mkdocs.yml`](mkdocs.yml). Preview
+locally with `pip install mkdocs-material && mkdocs serve`.)
+
 ## Status
 
 Implemented and tested here:

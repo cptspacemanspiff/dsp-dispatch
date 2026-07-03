@@ -290,16 +290,22 @@ jobs:
             bench_results/*_latency.png
             bench_results/*.json
 
-  # Publish the latency charts to GitHub Pages and post ONE sticky PR comment with
-  # the tables + inline chart images. A single deploy job (rather than each
-  # benchmark job) avoids two runners racing to push the gh-pages branch.
+  # Publish the docs site (with the interactive benchmark dashboard) to GitHub
+  # Pages, and post ONE sticky PR comment with each PR's charts + tables. A
+  # single deploy job (rather than each benchmark job) avoids two runners racing
+  # to push the gh-pages branch.
+  #
+  #   - On push to main: collate the benchmark JSON into the dashboard data,
+  #     build the MkDocs site, and deploy it to the Pages ROOT (keep_files:true
+  #     preserves any pr-<n>/ preview dirs). This is the live site.
+  #   - On pull_request: deploy just this PR's latency PNGs to a pr-<n>/ subdir
+  #     and post a sticky comment linking them + the tables. The interactive
+  #     dashboard tracks main only.
   #
   # ONE-TIME SETUP: point Pages at the gh-pages branch —
   #   Settings -> Pages -> Source: "Deploy from a branch" -> Branch: gh-pages, / (root).
-  # The first run creates gh-pages; until Pages serves it, the embedded images
-  # 404 (and there's a short delay after each deploy while Pages rebuilds).
-  # Charts go under a per-context subdir (pr-<n>/ or main/) so PRs and main never
-  # overwrite each other's images.
+  # The first run creates gh-pages; there's a short delay after each deploy while
+  # Pages rebuilds before the new content is served.
   publish:
     needs: [benchmarks, benchmarks-arm]
     if: >-
@@ -314,6 +320,8 @@ jobs:
       contents: write        # push to the gh-pages branch
       pull-requests: write   # post the sticky comment
     steps:
+      - uses: actions/checkout@v4   # need docs/, mkdocs.yml, tools/ to build
+
       - name: Download x86 results
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -328,63 +336,87 @@ jobs:
           name: benchmark-results-arm
           path: results/arm
 
-      - name: Assemble Pages site + comment
+      # ---------- main: build + deploy the full docs site ----------
+      - name: Set up Python
+        if: github.event_name == 'push'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs tooling
+        if: github.event_name == 'push'
+        run: python -m pip install --upgrade mkdocs-material
+
+      - name: Generate dashboard data
+        if: github.event_name == 'push'
+        run: |
+          python tools/build_dashboard.py \
+            --arch x86:x86_64:results/x86 \
+            --arch arm:Arm64:results/arm \
+            --commit "${{ github.sha }}" \
+            --generated "$(date -u +'%Y-%m-%d %H:%MZ')" \
+            --out docs/assets/bench-data.js
+
+      - name: Build docs site
+        if: github.event_name == 'push'
+        run: mkdocs build --strict --site-dir site
+
+      - name: Deploy docs site to GitHub Pages
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true       # preserve pr-<n>/ preview dirs at the root
+
+      # ---------- pull_request: sticky comment with this PR's charts + tables ----------
+      - name: Assemble PR comment + preview charts
+        if: github.event_name == 'pull_request'
         id: assemble
         run: |
           set -e
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            SUBDIR="pr-${{ github.event.pull_request.number }}"
-          else
-            SUBDIR="main"
-          fi
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          BASE="https://${owner}.github.io/${{ github.event.repository.name }}/${SUBDIR}"
+          SUBDIR="pr-${{ github.event.pull_request.number }}"
           echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          repo="${{ github.event.repository.name }}"
+          IMGBASE="https://${owner}.github.io/${repo}/${SUBDIR}"
+          SITEBASE="https://${owner}.github.io/${repo}"
 
-          mkdir -p site
-          {
-            echo "<!doctype html><meta charset=utf-8>"
-            echo "<title>dsp-dispatch benchmarks — ${SUBDIR}</title>"
-            echo "<h1>dsp-dispatch benchmarks (${SUBDIR})</h1>"
-            echo "<p>commit <code>${{ github.sha }}</code> · smoke on shared runners, not regression-grade</p>"
-          } > site/index.html
-
+          mkdir -p prsite
           {
             echo "## Benchmarks — \`${{ github.sha }}\`"
             echo ""
-            echo "📊 [Full dashboard](${BASE}/) · _smoke on shared runners, not regression-grade_"
+            echo "📊 [Live dashboard (main)](${SITEBASE}/benchmarks/) · charts below are this PR's smoke run — _shared runners, not regression-grade_"
           } > comment.md
 
           for arch in x86 arm; do
             src="results/${arch}"
             [ -d "$src" ] || continue
             [ "$arch" = "x86" ] && label="x86_64" || label="Arm64"
-            mkdir -p "site/${arch}"
-            cp "$src"/*_latency.png "site/${arch}/" 2>/dev/null || true
-            cp "$src"/*_results.md  "site/${arch}/" 2>/dev/null || true
+            mkdir -p "prsite/${arch}"
+            cp "$src"/*_latency.png "prsite/${arch}/" 2>/dev/null || true
 
-            echo "<h2>${label}</h2>" >> site/index.html
             printf '\n### %s\n\n' "$label" >> comment.md
             for suite in fft fir; do
               png="${suite}_latency.png"
-              if [ -f "site/${arch}/${png}" ]; then
-                echo "<img src=\"${arch}/${png}\" alt=\"${arch} ${suite}\" style=\"max-width:100%\">" >> site/index.html
-                echo "![${label} ${suite} latency](${BASE}/${arch}/${png})" >> comment.md
+              if [ -f "prsite/${arch}/${png}" ]; then
+                echo "![${label} ${suite} latency](${IMGBASE}/${arch}/${png})" >> comment.md
               fi
             done
             printf '\n<details><summary>%s tables</summary>\n\n' "$label" >> comment.md
             for suite in fft fir; do
-              md="site/${arch}/${suite}_results.md"
+              md="${src}/${suite}_results.md"
               [ -f "$md" ] && { cat "$md" >> comment.md; printf '\n' >> comment.md; }
             done
             printf '</details>\n' >> comment.md
           done
 
-      - name: Deploy charts to GitHub Pages
+      - name: Deploy PR preview charts
+        if: github.event_name == 'pull_request'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          publish_dir: ./prsite
           destination_dir: ${{ steps.assemble.outputs.subdir }}
           keep_files: true
 
