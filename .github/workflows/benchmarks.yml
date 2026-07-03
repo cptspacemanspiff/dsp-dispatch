@@ -1,3 +1,9 @@
+# Results publishing:
+#   - The `benchmarks` (x86) and `benchmarks-arm` jobs collate results and upload
+#     them as artifacts; each also writes its tables to the job summary.
+#   - The `publish` job then deploys the charts to GitHub Pages and posts one
+#     sticky PR comment with the tables + inline chart images (see that job for
+#     the required one-time Pages setup).
 name: build-test-benchmark
 
 on:
@@ -283,3 +289,108 @@ jobs:
             bench_results/*_results.csv
             bench_results/*_latency.png
             bench_results/*.json
+
+  # Publish the latency charts to GitHub Pages and post ONE sticky PR comment with
+  # the tables + inline chart images. A single deploy job (rather than each
+  # benchmark job) avoids two runners racing to push the gh-pages branch.
+  #
+  # ONE-TIME SETUP: point Pages at the gh-pages branch —
+  #   Settings -> Pages -> Source: "Deploy from a branch" -> Branch: gh-pages, / (root).
+  # The first run creates gh-pages; until Pages serves it, the embedded images
+  # 404 (and there's a short delay after each deploy while Pages rebuilds).
+  # Charts go under a per-context subdir (pr-<n>/ or main/) so PRs and main never
+  # overwrite each other's images.
+  publish:
+    needs: [benchmarks, benchmarks-arm]
+    if: >-
+      !cancelled()
+      && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        || (github.event_name == 'pull_request'
+            && github.event.pull_request.head.repo.full_name == github.repository)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push to the gh-pages branch
+      pull-requests: write   # post the sticky comment
+    steps:
+      - name: Download x86 results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: benchmark-results-x86
+          path: results/x86
+
+      - name: Download Arm64 results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: benchmark-results-arm
+          path: results/arm
+
+      - name: Assemble Pages site + comment
+        id: assemble
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SUBDIR="pr-${{ github.event.pull_request.number }}"
+          else
+            SUBDIR="main"
+          fi
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          BASE="https://${owner}.github.io/${{ github.event.repository.name }}/${SUBDIR}"
+          echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
+
+          mkdir -p site
+          {
+            echo "<!doctype html><meta charset=utf-8>"
+            echo "<title>dsp-dispatch benchmarks — ${SUBDIR}</title>"
+            echo "<h1>dsp-dispatch benchmarks (${SUBDIR})</h1>"
+            echo "<p>commit <code>${{ github.sha }}</code> · smoke on shared runners, not regression-grade</p>"
+          } > site/index.html
+
+          {
+            echo "## Benchmarks — \`${{ github.sha }}\`"
+            echo ""
+            echo "📊 [Full dashboard](${BASE}/) · _smoke on shared runners, not regression-grade_"
+          } > comment.md
+
+          for arch in x86 arm; do
+            src="results/${arch}"
+            [ -d "$src" ] || continue
+            [ "$arch" = "x86" ] && label="x86_64" || label="Arm64"
+            mkdir -p "site/${arch}"
+            cp "$src"/*_latency.png "site/${arch}/" 2>/dev/null || true
+            cp "$src"/*_results.md  "site/${arch}/" 2>/dev/null || true
+
+            echo "<h2>${label}</h2>" >> site/index.html
+            printf '\n### %s\n\n' "$label" >> comment.md
+            for suite in fft fir; do
+              png="${suite}_latency.png"
+              if [ -f "site/${arch}/${png}" ]; then
+                echo "<img src=\"${arch}/${png}\" alt=\"${arch} ${suite}\" style=\"max-width:100%\">" >> site/index.html
+                echo "![${label} ${suite} latency](${BASE}/${arch}/${png})" >> comment.md
+              fi
+            done
+            printf '\n<details><summary>%s tables</summary>\n\n' "$label" >> comment.md
+            for suite in fft fir; do
+              md="site/${arch}/${suite}_results.md"
+              [ -f "$md" ] && { cat "$md" >> comment.md; printf '\n' >> comment.md; }
+            done
+            printf '</details>\n' >> comment.md
+          done
+
+      - name: Deploy charts to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          destination_dir: ${{ steps.assemble.outputs.subdir }}
+          keep_files: true
+
+      - name: Post results to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: benchmarks
+          path: comment.md
