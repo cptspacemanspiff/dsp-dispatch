@@ -4,6 +4,32 @@ project(dsp_dispatch LANGUAGES CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # ---------------------------------------------------------------------------
+# Host-native tuning
+# ---------------------------------------------------------------------------
+# -march=native lets the compiler use the full ISA of the build machine
+# (AVX2/FMA, AVX-512, ...) for code we compile from source. Without it, GCC/Clang
+# target the generic x86-64 baseline (SSE2 only), so -O3 auto-vectorization is
+# capped at 128-bit SSE2 and never emits AVX2/FMA even on capable hardware.
+#
+# Applied only to OUR targets (the library and the benchmark wrappers/executables)
+# via DSP_ARCH_FLAGS. Fetched third-party deps are left untouched: liquid-dsp runs
+# its own SIMD detection, and KFR manages per-arch flags internally (a blanket
+# -march=native would fight its architecture machinery). Override with
+# -DDSP_NATIVE_ARCH=OFF for reproducible or cross-compiled builds.
+option(DSP_NATIVE_ARCH "Compile dsp-dispatch's own code with -march=native" ON)
+set(DSP_ARCH_FLAGS "")
+if(DSP_NATIVE_ARCH)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-march=native" _dsp_has_march_native)
+    if(_dsp_has_march_native)
+        set(DSP_ARCH_FLAGS -march=native)
+        message(STATUS "dsp-dispatch: building own code with -march=native")
+    else()
+        message(STATUS "dsp-dispatch: -march=native unsupported by this compiler; skipping")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Options (Phase 4: build and licensing controls)
 # ---------------------------------------------------------------------------
 set(FFT_BACKEND "auto" CACHE STRING
@@ -12,17 +38,19 @@ set_property(CACHE FFT_BACKEND PROPERTY STRINGS
     auto vdsp cmsis mkl aocl portable)
 
 set(FIR_BACKEND "portable" CACHE STRING
-    "FIR backend: portable|liquid|ipp")
+    "FIR backend: portable|liquid|ipp|cmsis")
 set_property(CACHE FIR_BACKEND PROPERTY STRINGS
-    portable liquid ipp)
+    portable liquid ipp cmsis)
 
 option(FFT_ENABLE_BENCHMARKS "Build the benchmark harness" OFF)
 option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
+option(FFT_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FFT benchmark backend (fetched)" OFF)
 option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (fetched)" OFF)
 option(FIR_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR FIR comparison" OFF)
 option(FIR_ENABLE_IPP_BENCHMARK "Build the Intel IPP FIR benchmark backend (fetched with uv)" OFF)
+option(FIR_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FIR benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_ALL_BENCHMARKS "Build every benchmark backend compatible with this host" OFF)
 option(FFT_BUILD_TESTS "Build correctness tests" ON)
 # Set ON in packaging/release CI to assert no forbidden libraries are present.
@@ -52,6 +80,9 @@ set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
 set(_compat_ipp FALSE)
+# CMSIS-DSP is portable C (scalar host build on x86, NEON on Arm), so it is
+# compatible with every host we target.
+set(_compat_cmsis TRUE)
 if(_host_x86)
     set(_compat_kfr TRUE)
     set(_compat_mkl TRUE)
@@ -73,6 +104,10 @@ if(FFT_ENABLE_ALL_BENCHMARKS)
     endif()
     if(_compat_ipp)
         set(FIR_ENABLE_IPP_BENCHMARK ON)
+    endif()
+    if(_compat_cmsis)
+        set(FIR_ENABLE_CMSIS_BENCHMARK ON)
+        set(FFT_ENABLE_CMSIS_BENCHMARK ON)
     endif()
     if(_compat_mkl)
         set(FFT_ENABLE_MKL_BENCHMARK ON)
@@ -117,6 +152,9 @@ endif()
 if(_compat_ipp)
     list(APPEND _compat_list "ipp")
 endif()
+if(_compat_cmsis)
+    list(APPEND _compat_list "cmsis")
+endif()
 string(REPLACE ";" " " _compat_str "${_compat_list}")
 message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
 message(STATUS "dsp-dispatch FIR backend: ${FIR_BACKEND}")
@@ -145,6 +183,8 @@ elseif(FIR_BACKEND STREQUAL "liquid")
     list(APPEND _fir_backend_sources src/backends/liquid/liquid_fir_backend.cpp)
 elseif(FIR_BACKEND STREQUAL "ipp")
     list(APPEND _fir_backend_sources src/backends/ipp/ipp_fir_backend.cpp)
+elseif(FIR_BACKEND STREQUAL "cmsis")
+    list(APPEND _fir_backend_sources src/backends/cmsis/cmsis_fir_backend.cpp)
 else()
     message(FATAL_ERROR "Unknown FIR_BACKEND: ${FIR_BACKEND}")
 endif()
@@ -161,6 +201,7 @@ target_include_directories(dsp_dispatch
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(dsp_dispatch PUBLIC cxx_std_17)
+target_compile_options(dsp_dispatch PRIVATE ${DSP_ARCH_FLAGS})
 target_compile_definitions(dsp_dispatch PRIVATE
     FFT_BACKEND_NAME="${_resolved_backend}")
 
@@ -176,6 +217,12 @@ if(_resolved_backend STREQUAL "aocl")
     target_link_libraries(dsp_dispatch PRIVATE AOCL::FFTZ)
 endif()
 
+# The CMSIS FFT backend needs CMSIS-DSP (scalar on x86, NEON on Arm).
+if(_resolved_backend STREQUAL "cmsis")
+    include(FetchCMSISDSP)
+    target_link_libraries(dsp_dispatch PRIVATE CMSISDSP::CMSISDSP)
+endif()
+
 if(FIR_BACKEND STREQUAL "liquid")
     include(FetchLiquidDSP)
     target_link_libraries(dsp_dispatch PRIVATE LiquidDSP::LiquidDSP)
@@ -184,6 +231,11 @@ endif()
 if(FIR_BACKEND STREQUAL "ipp")
     include(FetchIPP)
     target_link_libraries(dsp_dispatch PRIVATE IPP::IPP)
+endif()
+
+if(FIR_BACKEND STREQUAL "cmsis")
+    include(FetchCMSISDSP)
+    target_link_libraries(dsp_dispatch PRIVATE CMSISDSP::CMSISDSP)
 endif()
 
 # Only the library and public headers are installable/redistributable. The
@@ -233,6 +285,14 @@ endif()
 
 if(FIR_ENABLE_IPP_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
     message(FATAL_ERROR "FIR_ENABLE_IPP_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+endif()
+
+if(FIR_ENABLE_CMSIS_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FIR_ENABLE_CMSIS_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+endif()
+
+if(FFT_ENABLE_CMSIS_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FFT_ENABLE_CMSIS_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
 endif()
 
 # ---------------------------------------------------------------------------

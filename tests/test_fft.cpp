@@ -73,6 +73,9 @@ void test_complex_vs_reference(std::size_t n, fft::FftDirection dir) {
     cfg.direction = dir;
 
     auto plan = fft::FftPlan::create(cfg);
+    // A backend may only support a fixed set of lengths (e.g. CMSIS-DSP does
+    // power-of-two 16..4096). Treat an unsupported length as a skip.
+    if (plan.status() == fft::Status::UnsupportedLength) return;
     CHECK(plan.ok(), "complex plan create");
     if (!plan.ok()) return;
 
@@ -105,6 +108,10 @@ void test_roundtrip(std::size_t n) {
 
     auto pf = fft::FftPlan::create(fwd);
     auto pi = fft::FftPlan::create(inv);
+    if (pf.status() == fft::Status::UnsupportedLength ||
+        pi.status() == fft::Status::UnsupportedLength) {
+        return;
+    }
     CHECK(pf.ok() && pi.ok(), "roundtrip plans");
     if (!pf.ok() || !pi.ok()) return;
 
@@ -172,6 +179,7 @@ void test_impulse(std::size_t n) {
     fft::FftPlanConfig cfg;
     cfg.length = n;
     auto plan = fft::FftPlan::create(cfg);
+    if (plan.status() == fft::Status::UnsupportedLength) return;
     CHECK(plan.ok(), "impulse plan");
     if (!plan.ok()) return;
     plan.value().execute(in.data(), out.data());
@@ -215,6 +223,7 @@ void test_batch(std::size_t n, std::size_t batch) {
     cfg.length = n;
     cfg.batch = batch;
     auto plan = fft::FftPlan::create(cfg);
+    if (plan.status() == fft::Status::UnsupportedLength) return;
     CHECK(plan.ok(), "batch plan");
     if (!plan.ok()) return;
     plan.value().execute(in.data(), out.data());

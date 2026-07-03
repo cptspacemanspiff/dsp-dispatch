@@ -15,6 +15,7 @@ function(fft_add_bench_backend name backend_src)
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_compile_features(dsp_dispatch_${name} PUBLIC cxx_std_17)
+    target_compile_options(dsp_dispatch_${name} PRIVATE ${DSP_ARCH_FLAGS})
     if(ARGN)
         target_link_libraries(dsp_dispatch_${name} PUBLIC ${ARGN})
     endif()
@@ -22,6 +23,7 @@ function(fft_add_bench_backend name backend_src)
     add_executable(fft_bench_${name} ${CMAKE_CURRENT_SOURCE_DIR}/bench_fft.cpp)
     target_link_libraries(fft_bench_${name}
         PRIVATE dsp_dispatch_${name} benchmark::benchmark)
+    target_compile_options(fft_bench_${name} PRIVATE ${DSP_ARCH_FLAGS})
     target_include_directories(fft_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endfunction()
 
@@ -39,6 +41,7 @@ function(fir_add_bench_backend name backend_src)
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_compile_features(dsp_dispatch_fir_${name} PUBLIC cxx_std_17)
+    target_compile_options(dsp_dispatch_fir_${name} PRIVATE ${DSP_ARCH_FLAGS})
     if(ARGN)
         target_link_libraries(dsp_dispatch_fir_${name} PUBLIC ${ARGN})
     endif()
@@ -46,6 +49,7 @@ function(fir_add_bench_backend name backend_src)
     add_executable(fir_bench_${name} ${CMAKE_CURRENT_SOURCE_DIR}/bench_fir.cpp)
     target_link_libraries(fir_bench_${name}
         PRIVATE dsp_dispatch_fir_${name} benchmark::benchmark)
+    target_compile_options(fir_bench_${name} PRIVATE ${DSP_ARCH_FLAGS})
     target_include_directories(fir_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endfunction()
 
@@ -67,6 +71,14 @@ if(FIR_ENABLE_IPP_BENCHMARK)
         ${PROJECT_SOURCE_DIR}/src/backends/ipp/ipp_fir_backend.cpp
         IPP::IPP)
     message(STATUS "IPP FIR benchmark backend enabled (static ipp-static via uv if needed).")
+endif()
+
+if(FIR_ENABLE_CMSIS_BENCHMARK)
+    include(FetchCMSISDSP)
+    fir_add_bench_backend(cmsis
+        ${PROJECT_SOURCE_DIR}/src/backends/cmsis/cmsis_fir_backend.cpp
+        CMSISDSP::CMSISDSP)
+    message(STATUS "CMSIS-DSP FIR benchmark backend enabled (fetched; scalar on x86, NEON on Arm).")
 endif()
 
 # KFR: benchmark-only, fetched on demand. Lives entirely under bench/.
@@ -125,4 +137,14 @@ if(FFT_ENABLE_AOCL_BENCHMARK)
         ${PROJECT_SOURCE_DIR}/src/backends/aocl/aocl_backend.cpp
         AOCL::FFTZ)
     message(STATUS "AOCL benchmark backend enabled (built AOCL-FFTZ).")
+endif()
+
+# Arm CMSIS-DSP: production-capable FFT backend, fetched. Uses the same backend
+# source as the production build (scalar on x86, NEON on Arm).
+if(FFT_ENABLE_CMSIS_BENCHMARK)
+    include(FetchCMSISDSP)
+    fft_add_bench_backend(cmsis
+        ${PROJECT_SOURCE_DIR}/src/backends/cmsis/cmsis_backend.cpp
+        CMSISDSP::CMSISDSP)
+    message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; scalar on x86, NEON on Arm).")
 endif()

@@ -40,12 +40,24 @@ components:
     notes: Linked from the OS SDK on Apple platforms. No redistribution of binaries.
 
   - name: CMSIS-DSP
-    version: TBD
+    version: v1.17.0
     license: Apache-2.0
     source: https://github.com/ARM-software/CMSIS-DSP
-    used_by: backend (cmsis)
+    used_by: >
+      backend (fft/cmsis, fir/cmsis), bench (gated by FFT_ENABLE_CMSIS_BENCHMARK
+      and FIR_ENABLE_CMSIS_BENCHMARK)
     production: true
-    notes: Permissively licensed. Enable NEON on AArch64. Copy only required units.
+    notes: >
+      FFT backend (arm_cfft_f32 complex, arm_rfft_fast_f32 real) and real
+      single-rate FIR backend (arm_fir_f32/f64). Portable C: fetched via
+      cmake/FetchCMSISDSP.cmake and built as a scalar host kernel on x86_64
+      (HOST=ON) or a NEON kernel on AArch64 (NEON=ON). FFT is float32 only and
+      limited to CMSIS's power-of-two radix tables (complex 16..4096, real
+      32..4096); other lengths/precisions report UnsupportedLength/Config. The FIR
+      side has no complex kernel (complex configs report UnsupportedConfig), takes
+      time-reversed coeffs, and owns a persistent (numTaps + blockSize - 1) state
+      buffer per instance. Permissively licensed; copy only the required source
+      units and license file for a packaged cmsis build.
 
   - name: Intel oneMKL (DFT)
     version: 2026.0.0

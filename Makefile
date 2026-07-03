@@ -1,7 +1,7 @@
 # Convenience wrapper around the CMake benchmark flow.
 #
 #   make benchmarks   # configure (Release, all backends), build, run, collate
-#   make fir-benchmarks # configure/build/run portable + liquid/KFR/IPP FIR benchmarks
+#   make fir-benchmarks # configure/build/run portable + liquid/KFR/IPP/CMSIS FIR benchmarks
 #   make build        # configure + build the bench executables only
 #   make clean        # remove the build dir and bench_results/
 #
@@ -39,7 +39,7 @@ endif
 ## benchmarks: configure + build all backends, then run and collate results
 benchmarks: run
 
-## fir-benchmarks: configure + build portable/liquid/KFR/IPP FIR backends, then run and collate results
+## fir-benchmarks: configure + build portable/liquid/KFR/IPP/CMSIS FIR backends, then run and collate results
 fir-benchmarks: run-fir
 
 ## configure: run CMake with Release + every host-compatible benchmark backend
@@ -56,6 +56,7 @@ configure-fir:
 	      -DFIR_ENABLE_LIQUID_BENCHMARK=ON \
 	      -DFIR_ENABLE_KFR_BENCHMARK=ON \
 	      -DFIR_ENABLE_IPP_BENCHMARK=ON \
+	      -DFIR_ENABLE_CMSIS_BENCHMARK=ON \
 	      -S . -B $(BUILD_DIR)
 
 ## build: build the per-backend benchmark executables
@@ -64,7 +65,7 @@ build: configure
 
 ## build-fir: build the FIR benchmark executables
 build-fir: configure-fir
-	cmake --build $(BUILD_DIR) --target fir_bench_portable fir_bench_liquid fir_bench_kfr fir_bench_ipp
+	cmake --build $(BUILD_DIR) --target fir_bench_portable fir_bench_liquid fir_bench_kfr fir_bench_ipp fir_bench_cmsis
 
 ## run: run every fft_bench_* and write bench_results/ (tables, CSV, graph)
 run: build

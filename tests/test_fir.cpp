@@ -95,6 +95,8 @@ void test_complex_real_taps() {
     cfg.block_size = n;
 
     auto plan = fir::FirPlan::create(cfg);
+    // Some backends (e.g. CMSIS-DSP) provide real FIR only.
+    if (plan.status() == fir::Status::UnsupportedConfig) return;
     CHECK(plan.ok(), "complex real taps plan");
     if (!plan.ok()) return;
     plan.value().execute(in.data(), out.data());
@@ -120,6 +122,8 @@ void test_complex_taps() {
     cfg.block_size = n;
 
     auto plan = fir::FirPlan::create(cfg);
+    // Some backends (e.g. CMSIS-DSP) provide real FIR only.
+    if (plan.status() == fir::Status::UnsupportedConfig) return;
     CHECK(plan.ok(), "complex taps plan");
     if (!plan.ok()) return;
     plan.value().execute(in.data(), out.data());
