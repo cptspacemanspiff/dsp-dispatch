@@ -155,6 +155,16 @@ if(FFT_ENABLE_CMSIS_BENCHMARK)
     message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; portable/host, compiler auto-vectorizes to NEON on Arm).")
 endif()
 
+# Arm Performance Libraries: production-capable AArch64 FFT backend, fetched on
+# demand. Uses the same backend source as the production build (src/backends/armpl).
+if(FFT_ENABLE_ARMPL_BENCHMARK)
+    include(FetchArmPL)
+    fft_add_bench_backend(armpl
+        ${PROJECT_SOURCE_DIR}/src/backends/armpl/armpl_backend.cpp
+        ArmPL::ArmPL)
+    message(STATUS "ArmPL benchmark backend enabled (fetched Arm Performance Libraries).")
+endif()
+
 # FFTW: benchmark-only (GPL), fetched and built from source. Single precision
 # (fftw3f), complex f32 -- the standard c2c benchmark. Works on x86 and Arm.
 # Lives entirely under bench/ and is never linked into the library or installed.

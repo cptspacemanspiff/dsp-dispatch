@@ -180,8 +180,12 @@ jobs:
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
+          # build/_armpl holds the ArmPL library extracted by FetchArmPL (the
+          # ~0.9 GB tarball is deleted after extraction, leaving ~270 MB); caching
+          # it lets the armpl leg skip the download on a cache hit.
           path: |
             build/_deps
+            build/_armpl
           key: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-${{ hashFiles('cmake/*.cmake', 'CMakeLists.txt', 'bench/CMakeLists.txt') }}
           restore-keys: deps-${{ github.event.repository.name }}-arm-fft-${{ matrix.backend }}-
 

@@ -33,9 +33,9 @@ endif()
 # Options (Phase 4: build and licensing controls)
 # ---------------------------------------------------------------------------
 set(FFT_BACKEND "auto" CACHE STRING
-    "FFT backend: auto|vdsp|cmsis|mkl|aocl|portable")
+    "FFT backend: auto|vdsp|cmsis|mkl|aocl|armpl|portable")
 set_property(CACHE FFT_BACKEND PROPERTY STRINGS
-    auto vdsp cmsis mkl aocl portable)
+    auto vdsp cmsis mkl aocl armpl portable)
 
 set(FIR_BACKEND "portable" CACHE STRING
     "FIR backend: portable|liquid|ipp|cmsis")
@@ -46,6 +46,7 @@ option(FFT_ENABLE_BENCHMARKS "Build the benchmark harness" OFF)
 option(FFT_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR comparison" OFF)
 option(FFT_ENABLE_MKL_BENCHMARK "Build the Intel oneMKL benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_AOCL_BENCHMARK "Build the AMD AOCL-FFTZ benchmark backend (fetched + built)" OFF)
+option(FFT_ENABLE_ARMPL_BENCHMARK "Build the Arm Performance Libraries benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FFT benchmark backend (fetched)" OFF)
 option(FFT_ENABLE_FFTW_BENCHMARK "Build the FFTW FFT benchmark backend (fetched; benchmark-only, GPL)" OFF)
 option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (fetched)" OFF)
@@ -88,10 +89,12 @@ endif()
 # machine yields both the x86 and Arm lists. Compatibility rules:
 #   - portable / cmsis / liquid : portable C, buildable and tested on every arch.
 #   - mkl / aocl / ipp          : x86-only vendor libraries.
+#   - armpl                     : AArch64-only vendor library (fetched by
+#                                 cmake/FetchArmPL.cmake), so Arm-tested only.
 #   - vdsp                      : Apple-only AND still a compile-error stub, so it
 #                                 is intentionally omitted from the tested set.
 set(_fft_backends_x86 portable cmsis mkl aocl)
-set(_fft_backends_arm portable cmsis)
+set(_fft_backends_arm portable cmsis armpl)
 set(_fir_backends_x86 portable cmsis liquid ipp)
 set(_fir_backends_arm portable cmsis liquid)
 
@@ -124,12 +127,14 @@ file(WRITE "${CMAKE_BINARY_DIR}/testable_backends.json"
 #   - oneMKL:     Intel x86 library, x86 only.
 #   - AOCL-FFTZ:  AMD x86 library, x86 only.
 #   - IPP:        Intel x86 library, x86 only.
+#   - ArmPL:      Arm AArch64 vendor library, Arm only (fetched deb, no root).
 #   - liquid-dsp: portable C, every host.
 #   - FFTW:       portable C (SSE2/AVX/AVX2 on x86, NEON on Arm), every host.
 set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
 set(_compat_ipp FALSE)
+set(_compat_armpl FALSE)
 # CMSIS-DSP, liquid-dsp and FFTW are portable C (scalar/SIMD host build on x86,
 # NEON on Arm), so they are compatible with every host we target.
 set(_compat_cmsis TRUE)
@@ -141,6 +146,10 @@ if(_host_x86)
     set(_compat_aocl TRUE)
     set(_compat_ipp TRUE)
 elseif(_host_arm)
+    # ArmPL is the AArch64 vendor library (the Arm counterpart to x86 oneMKL/AOCL),
+    # fetched by cmake/FetchArmPL.cmake. The GCC (gfortran-ABI) build links cleanly
+    # with both GCC and vanilla Clang, so it is compatible on every Arm host.
+    set(_compat_armpl TRUE)
     # KFR's hand-written ARM NEON kernels (its KFR_NATIVE_INTRINSICS path) only
     # compile with Clang; GCC rejects KFR's signed vbslq_* select intrinsics. So
     # KFR is a compatible benchmark backend on Arm only under a Clang toolchain
@@ -180,6 +189,9 @@ if(FFT_ENABLE_ALL_BENCHMARKS OR DSP_ENABLE_ALL_BENCHMARKS)
     if(_compat_aocl)
         set(FFT_ENABLE_AOCL_BENCHMARK ON)
     endif()
+    if(_compat_armpl)
+        set(FFT_ENABLE_ARMPL_BENCHMARK ON)
+    endif()
 endif()
 # liquid-dsp is a FIR-only backend and was never part of the FFT-era switch, so
 # only the DSP-wide umbrella enables it (keeps FFT_ENABLE_ALL_BENCHMARKS's
@@ -196,7 +208,11 @@ if(_resolved_backend STREQUAL "auto")
     if(APPLE)
         set(_resolved_backend "vdsp")
     elseif(_host_arm AND NOT WIN32)
-        set(_resolved_backend "cmsis")
+        # ArmPL is a complete AArch64 vendor backend (fetched on demand via
+        # cmake/FetchArmPL.cmake), the Arm counterpart to AOCL on x86, so it is
+        # the default on Arm. (Set -DFFT_BACKEND=cmsis for the dependency-free,
+        # download-free portable/NEON path.)
+        set(_resolved_backend "armpl")
     elseif(_host_x86)
         # AOCL-FFTZ is a complete x86 backend (fetched and built from source via
         # cmake/FetchAOCL.cmake), so it is the default on x86.
@@ -219,6 +235,9 @@ if(_compat_mkl)
 endif()
 if(_compat_aocl)
     list(APPEND _compat_list "aocl")
+endif()
+if(_compat_armpl)
+    list(APPEND _compat_list "armpl")
 endif()
 if(_compat_ipp)
     list(APPEND _compat_list "ipp")
@@ -249,6 +268,8 @@ elseif(_resolved_backend STREQUAL "mkl")
     list(APPEND _backend_sources src/backends/mkl/mkl_backend.cpp)
 elseif(_resolved_backend STREQUAL "aocl")
     list(APPEND _backend_sources src/backends/aocl/aocl_backend.cpp)
+elseif(_resolved_backend STREQUAL "armpl")
+    list(APPEND _backend_sources src/backends/armpl/armpl_backend.cpp)
 else()
     message(FATAL_ERROR "Unknown FFT_BACKEND: ${FFT_BACKEND}")
 endif()
@@ -292,6 +313,13 @@ endif()
 if(_resolved_backend STREQUAL "aocl")
     include(FetchAOCL)
     target_link_libraries(dsp_dispatch PRIVATE AOCL::FFTZ)
+endif()
+
+# The ArmPL backend needs the fetched Arm Performance Libraries (its FFTW3
+# interface header and the LP64 static library).
+if(_resolved_backend STREQUAL "armpl")
+    include(FetchArmPL)
+    target_link_libraries(dsp_dispatch PRIVATE ArmPL::ArmPL)
 endif()
 
 # The CMSIS FFT backend needs CMSIS-DSP (scalar on x86, NEON on Arm).
@@ -403,6 +431,10 @@ endif()
 
 if(FFT_ENABLE_CMSIS_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
     message(FATAL_ERROR "FFT_ENABLE_CMSIS_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
+endif()
+
+if(FFT_ENABLE_ARMPL_BENCHMARK AND NOT FFT_ENABLE_BENCHMARKS)
+    message(FATAL_ERROR "FFT_ENABLE_ARMPL_BENCHMARK requires FFT_ENABLE_BENCHMARKS=ON.")
 endif()
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ Initial production backends:
 | Platform | Production backend | License |
 |---|---|---|
 | Apple platforms | Accelerate/vDSP | Apple SDK terms |
-| Non-Apple Arm/AArch64 | CMSIS-DSP | Apache-2.0 |
+| Non-Apple Arm/AArch64 | Arm Performance Libraries (ArmPL); CMSIS-DSP as the download-free fallback | ArmPL EULA; CMSIS-DSP Apache-2.0 |
 | Intel x86-64 | oneMKL DFT | Intel redistributable terms |
 | AMD x86-64 | AOCL-FFTW | Verify the exact packaged version and redistribution terms |
 | Other/unsupported CPU | Portable fallback selected by benchmarks | Prefer BSD/MIT/Apache-2.0 |
@@ -87,6 +87,7 @@ src/backends/vdsp/
 src/backends/cmsis/
 src/backends/mkl/
 src/backends/aocl/
+src/backends/armpl/
 src/backends/portable/
 bench/backends/kfr/
 tests/
@@ -114,6 +115,9 @@ Backend notes:
 - oneMKL: use DFT descriptors, commit once, and execute repeatedly.
 - AOCL-FFTW: create and retain plans; never include planning time in execution
   benchmarks.
+- ArmPL: consume the FFTW3 interface (plan once, new-array execute on caller
+  buffers); fetch the GCC/gfortran-ABI static build (links under GCC and vanilla
+  Clang); apply the contract's 1/N on inverse/c2r since ArmPL is unscaled.
 - Portable fallback: choose only after representative benchmarking. Candidates
   include PFFFT for constrained power-of-two 1D workloads and PocketFFT for
   broader length support.
@@ -123,7 +127,7 @@ Backend notes:
 Add explicit CMake options:
 
 ```text
-FFT_BACKEND=auto|vdsp|cmsis|mkl|aocl|portable
+FFT_BACKEND=auto|vdsp|cmsis|mkl|aocl|armpl|portable
 FFT_ENABLE_BENCHMARKS=OFF
 FFT_ENABLE_KFR_BENCHMARK=OFF
 ```

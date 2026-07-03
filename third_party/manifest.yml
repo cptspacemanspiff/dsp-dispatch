@@ -107,6 +107,30 @@ components:
       backend reports UnsupportedLength for those). Confirm the exact license
       terms with counsel before shipping an AOCL build.
 
+  - name: Arm Performance Libraries (ArmPL)
+    version: "26.01.1"
+    license: Arm Performance Libraries EULA (redistributable terms vary; confirm)
+    source: >
+      Arm's official deb_gcc tarball, fetched by cmake/FetchArmPL.cmake from
+      https://developer.arm.com/-/cdn-downloads/permalink/Arm-Performance-Libraries.
+      The tarball's self-extracting installer payload is unwrapped without root or
+      dpkg (gzip payload -> .deb -> data.tar.gz) and only the LP64 sequential
+      static library + headers are extracted.
+    used_by: backend (armpl)
+    production: true
+    notes: >
+      AArch64 vendor FFT library, the Arm counterpart to x86 oneMKL/AOCL. The FFT
+      component implements the standard FFTW3 interface (fftwf_*/fftw_* in
+      libarmpl), which src/backends/armpl uses; complex, real-to-complex, and
+      complex-to-real in f32/f64, batched, any length. Static, sequential LP64
+      link (libarmpl_lp64.a + libamath.a + libm). The GCC (gfortran-ABI) build is
+      selected; it links cleanly with both GCC and vanilla Clang, and the C FFTW3
+      interface pulls no Fortran runtime (no -lgfortran needed). Building this
+      project with Arm Compiler for Linux (armflang) would instead want the _arm
+      build -- override ARMPL_TARBALL_URL. Have counsel review the ArmPL EULA /
+      redistribution terms and record the exact redistributable file allowlist
+      before packaging an ArmPL build.
+
   - name: liquid-dsp
     version: v1.7.0
     license: MIT
