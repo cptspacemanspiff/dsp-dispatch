@@ -5,9 +5,11 @@
 #   make build        # configure + build the bench executables only
 #   make clean        # remove the build dir and bench_results/
 #
-# "All backends" is resolved by CMake's FFT_ENABLE_ALL_BENCHMARKS option, which
-# enables every benchmark backend compatible with this host (x86: portable, kfr,
-# mkl, aocl; Arm/Apple: portable, kfr). No backend list is hardcoded here.
+# "All backends" is resolved by CMake's DSP_ENABLE_ALL_BENCHMARKS option, which
+# enables every FFT and FIR benchmark backend compatible with this host (x86:
+# portable, kfr, mkl, aocl, ipp, cmsis, liquid; Arm: portable, cmsis, liquid,
+# and kfr under Clang). No backend list is hardcoded here -- choosing backends
+# is CMake's job, so e.g. x86-only IPP is never fetched on an Arm host.
 #
 # Override any variable on the command line, e.g.:
 #   make benchmarks BUILD_DIR=bench-out KFR_ARCH=avx2
@@ -45,27 +47,21 @@ fir-benchmarks: run-fir
 ## configure: run CMake with Release + every host-compatible benchmark backend
 configure:
 	cmake -G "$(GENERATOR)" -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-	      -DFFT_ENABLE_ALL_BENCHMARKS=ON \
+	      -DDSP_ENABLE_ALL_BENCHMARKS=ON \
 	      $(KFR_ARCH_FLAG) \
 	      -S . -B $(BUILD_DIR)
 
-## configure-fir: run CMake with Release + FIR benchmark backends
-configure-fir:
-	cmake -G "$(GENERATOR)" -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-	      -DFFT_ENABLE_BENCHMARKS=ON \
-	      -DFIR_ENABLE_LIQUID_BENCHMARK=ON \
-	      -DFIR_ENABLE_KFR_BENCHMARK=ON \
-	      -DFIR_ENABLE_IPP_BENCHMARK=ON \
-	      -DFIR_ENABLE_CMSIS_BENCHMARK=ON \
-	      -S . -B $(BUILD_DIR)
+## configure-fir: alias for configure (same host-gated backend set; suite is
+## selected at build/run time, not configure time)
+configure-fir: configure
 
-## build: build the per-backend benchmark executables
+## build: build the configured FFT benchmark executables
 build: configure
-	cmake --build $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target fft_benchmarks
 
-## build-fir: build the FIR benchmark executables
+## build-fir: build the configured FIR benchmark executables
 build-fir: configure-fir
-	cmake --build $(BUILD_DIR) --target fir_bench_portable fir_bench_liquid fir_bench_kfr fir_bench_ipp fir_bench_cmsis
+	cmake --build $(BUILD_DIR) --target fir_benchmarks
 
 ## run: run every fft_bench_* and write bench_results/ (tables, CSV, graph)
 run: build

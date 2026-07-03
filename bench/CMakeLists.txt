@@ -25,6 +25,9 @@ function(fft_add_bench_backend name backend_src)
         PRIVATE dsp_dispatch_${name} benchmark::benchmark)
     target_compile_options(fft_bench_${name} PRIVATE ${DSP_ARCH_FLAGS})
     target_include_directories(fft_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # Record it so the `fft_benchmarks` aggregate target below builds exactly the
+    # backends CMake actually configured -- no hardcoded list in the Makefile.
+    set_property(GLOBAL APPEND PROPERTY DSP_FFT_BENCH_TARGETS fft_bench_${name})
 endfunction()
 
 # Portable: always available, no external dependencies.
@@ -51,6 +54,9 @@ function(fir_add_bench_backend name backend_src)
         PRIVATE dsp_dispatch_fir_${name} benchmark::benchmark)
     target_compile_options(fir_bench_${name} PRIVATE ${DSP_ARCH_FLAGS})
     target_include_directories(fir_bench_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # Record it so the `fir_benchmarks` aggregate target below builds exactly the
+    # backends CMake actually configured -- no hardcoded list in the Makefile.
+    set_property(GLOBAL APPEND PROPERTY DSP_FIR_BENCH_TARGETS fir_bench_${name})
 endfunction()
 
 # FIR portable: always available, no external dependencies.
@@ -148,3 +154,12 @@ if(FFT_ENABLE_CMSIS_BENCHMARK)
         CMSISDSP::CMSISDSP)
     message(STATUS "CMSIS-DSP FFT benchmark backend enabled (fetched; portable/host, compiler auto-vectorizes to NEON on Arm).")
 endif()
+
+# Aggregate targets: build every FFT (resp. FIR) benchmark executable that was
+# actually configured for this host. The Makefile builds these instead of naming
+# individual backends, so which backends exist stays entirely CMake's decision.
+# Portable is always registered, so both properties are non-empty.
+get_property(_fft_bench_targets GLOBAL PROPERTY DSP_FFT_BENCH_TARGETS)
+add_custom_target(fft_benchmarks DEPENDS ${_fft_bench_targets})
+get_property(_fir_bench_targets GLOBAL PROPERTY DSP_FIR_BENCH_TARGETS)
+add_custom_target(fir_benchmarks DEPENDS ${_fir_bench_targets})

@@ -51,7 +51,11 @@ option(FIR_ENABLE_LIQUID_BENCHMARK "Build the liquid-dsp FIR benchmark backend (
 option(FIR_ENABLE_KFR_BENCHMARK "Build the benchmark-only KFR FIR comparison" OFF)
 option(FIR_ENABLE_IPP_BENCHMARK "Build the Intel IPP FIR benchmark backend (fetched with uv)" OFF)
 option(FIR_ENABLE_CMSIS_BENCHMARK "Build the Arm CMSIS-DSP FIR benchmark backend (fetched)" OFF)
-option(FFT_ENABLE_ALL_BENCHMARKS "Build every benchmark backend compatible with this host" OFF)
+option(FFT_ENABLE_ALL_BENCHMARKS "Build every FFT benchmark backend compatible with this host" OFF)
+# DSP-wide umbrella: like FFT_ENABLE_ALL_BENCHMARKS but also covers the FIR-only
+# backends (adds liquid-dsp). This is the switch the Makefile flips so it never
+# has to name individual backends -- CMake host-gates each one below.
+option(DSP_ENABLE_ALL_BENCHMARKS "Build every FFT and FIR benchmark backend compatible with this host" OFF)
 option(FFT_BUILD_TESTS "Build correctness tests" ON)
 # Set ON in packaging/release CI to assert no forbidden libraries are present.
 # Benchmarking KFR in an optimized (Release) build is allowed; packaging it is not.
@@ -72,31 +76,44 @@ endif()
 
 # Which optional benchmark backends can this host build? (portable is always
 # available and needs no external dependency.) Best-effort guide:
-#   - KFR:        cross-platform (x86 SSE2+ / ARM NEON).
+#   - KFR:        x86 (SSE2+, any compiler); Arm (NEON) requires Clang, since
+#                 KFR's NEON intrinsics don't compile with GCC.
 #   - oneMKL:     Intel x86 library, x86 only.
 #   - AOCL-FFTZ:  AMD x86 library, x86 only.
 #   - IPP:        Intel x86 library, x86 only.
+#   - liquid-dsp: portable C, every host.
 set(_compat_kfr FALSE)
 set(_compat_mkl FALSE)
 set(_compat_aocl FALSE)
 set(_compat_ipp FALSE)
-# CMSIS-DSP is portable C (scalar host build on x86, NEON on Arm), so it is
-# compatible with every host we target.
+# CMSIS-DSP and liquid-dsp are portable C (scalar host build on x86, NEON on
+# Arm), so they are compatible with every host we target.
 set(_compat_cmsis TRUE)
+set(_compat_liquid TRUE)
 if(_host_x86)
     set(_compat_kfr TRUE)
     set(_compat_mkl TRUE)
     set(_compat_aocl TRUE)
     set(_compat_ipp TRUE)
 elseif(_host_arm)
-    set(_compat_kfr TRUE)
+    # KFR's hand-written ARM NEON kernels (its KFR_NATIVE_INTRINSICS path) only
+    # compile with Clang; GCC rejects KFR's signed vbslq_* select intrinsics. So
+    # KFR is a compatible benchmark backend on Arm only under a Clang toolchain
+    # -- otherwise FFT_ENABLE_ALL_BENCHMARKS would auto-select a backend that
+    # cannot build here. The FATAL_ERROR guard below still catches an explicit
+    # -DFFT_ENABLE_KFR_BENCHMARK=ON on Arm+GCC with an actionable message.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(_compat_kfr TRUE)
+    endif()
 endif()
 
-# FFT_ENABLE_ALL_BENCHMARKS: convenience switch equivalent to setting the
-# individual FFT_ENABLE_*_BENCHMARK flags for every backend compatible with this
-# host (and the harness itself). Non-cache sets, so it never claims an
-# incompatible backend and never rewrites the user's cached values.
-if(FFT_ENABLE_ALL_BENCHMARKS)
+# FFT_ENABLE_ALL_BENCHMARKS / DSP_ENABLE_ALL_BENCHMARKS: convenience switches
+# equivalent to setting the individual *_ENABLE_*_BENCHMARK flags for every
+# backend compatible with this host (and the harness itself). The DSP-wide
+# switch additionally enables the FIR-only backends (liquid-dsp). Non-cache
+# sets, so they never claim an incompatible backend (e.g. x86-only IPP on Arm)
+# and never rewrite the user's cached values.
+if(FFT_ENABLE_ALL_BENCHMARKS OR DSP_ENABLE_ALL_BENCHMARKS)
     set(FFT_ENABLE_BENCHMARKS ON)
     if(_compat_kfr)
         set(FFT_ENABLE_KFR_BENCHMARK ON)
@@ -115,6 +132,12 @@ if(FFT_ENABLE_ALL_BENCHMARKS)
     if(_compat_aocl)
         set(FFT_ENABLE_AOCL_BENCHMARK ON)
     endif()
+endif()
+# liquid-dsp is a FIR-only backend and was never part of the FFT-era switch, so
+# only the DSP-wide umbrella enables it (keeps FFT_ENABLE_ALL_BENCHMARKS's
+# behavior unchanged for anyone relying on it).
+if(DSP_ENABLE_ALL_BENCHMARKS AND _compat_liquid)
+    set(FIR_ENABLE_LIQUID_BENCHMARK ON)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -154,6 +177,9 @@ if(_compat_ipp)
 endif()
 if(_compat_cmsis)
     list(APPEND _compat_list "cmsis")
+endif()
+if(_compat_liquid)
+    list(APPEND _compat_list "liquid")
 endif()
 string(REPLACE ";" " " _compat_str "${_compat_list}")
 message(STATUS "dsp-dispatch backend: ${_resolved_backend}")
@@ -247,6 +273,22 @@ install(DIRECTORY include/ DESTINATION include)
 # ---------------------------------------------------------------------------
 # Licensing safeguards (Phase 4)
 # ---------------------------------------------------------------------------
+# KFR's hand-written ARM NEON kernels (its KFR_NATIVE_INTRINSICS path) only
+# compile with Clang. GCC rejects KFR's signed vbslq_* select intrinsics (the
+# mask arg is e.g. int16x8_t, but GCC's vbslq_s16 wants uint16x8_t), so an
+# aarch64 GCC build fails ~200 lines deep inside KFR. Fail fast here with an
+# actionable message instead. x86 is unaffected (that path uses SSE/AVX, not
+# these NEON intrinsics), so this is gated on _host_arm only.
+if(_host_arm AND (FFT_ENABLE_KFR_BENCHMARK OR FIR_ENABLE_KFR_BENCHMARK)
+        AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR
+        "KFR benchmarks on Arm require a Clang toolchain; "
+        "${CMAKE_CXX_COMPILER_ID} cannot compile KFR's NEON intrinsics. "
+        "Re-run CMake with -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++, "
+        "or drop the KFR benchmark (omit FFT_ENABLE_ALL_BENCHMARKS, or set "
+        "-DFFT_ENABLE_KFR_BENCHMARK=OFF -DFIR_ENABLE_KFR_BENCHMARK=OFF).")
+endif()
+
 # KFR is benchmark-only and must never enter a packaged/redistributable artifact.
 # It may be benchmarked in an optimized Release build (that is the point of the
 # comparison); the prohibition is on PACKAGING it, enforced here and by CI's
