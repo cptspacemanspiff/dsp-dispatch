@@ -172,10 +172,16 @@ components:
     version: cpp @ c90e55b3d529f8efa40ed01a20de22405f45fc65
     license: BSD-3-Clause
     source: >
-      Single header pocketfft_hdronly.h, fetched by cmake/FetchPocketFFT.cmake
-      from a pinned, SHA256-verified raw.githubusercontent.com commit URL
-      (https://github.com/mreineck/pocketfft, cpp branch). No git checkout and
-      none of PocketFFT's own CMake/Python tooling is pulled in.
+      Single header pocketfft_hdronly.h, VENDORED in-tree at
+      third_party/pocketfft/pocketfft_hdronly.h (BSD-3-Clause, redistributable)
+      so the default build is hermetic and needs no network -- required under
+      Bazel/rules_foreign_cc, whose sandbox has no network access.
+      cmake/FetchPocketFFT.cmake uses the vendored copy after verifying its SHA256
+      against the pin; it falls back to downloading from the pinned, SHA256-verified
+      raw.githubusercontent.com commit URL (https://github.com/mreineck/pocketfft,
+      cpp branch) only when the vendored header is absent, which is also how the
+      vendored copy is refreshed when the pin is bumped. No git checkout and none
+      of PocketFFT's own CMake/Python tooling is pulled in either way.
     used_by: backend (pocketfft)
     production: true
     notes: >
